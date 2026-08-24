@@ -27,8 +27,8 @@ export function ShareModal({ item, onClose, onCreateLink, onGetLinks, onRevokeLi
   const [copiedToken, setCopiedToken] = useState('');
 
   useEffect(() => {
-    onGetShares().then(setShares).catch(() => {});
-    onGetLinks().then(setLinks).catch(() => {});
+    onGetShares().then(setShares).catch(() => { });
+    onGetLinks().then(setLinks).catch(() => { });
   }, [onGetShares, onGetLinks]);
 
   const handleInvite = async () => {

@@ -36,7 +36,7 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
         <div className="preview-body">
           {loading ? <div className="preview-loading"><Loader2 size={28} className="spin" /></div> :
             isImage && url ? <img src={url} alt={item.name} className="preview-image" /> :
-            <div className="preview-fallback"><FileImage size={48} /><p>{kind === 'pdf' ? 'PDF document' : kind === 'document' ? 'Document' : kind === 'spreadsheet' ? 'Spreadsheet' : 'File preview'}</p><span>{formatBytes(item.sizeBytes ?? 0)}</span></div>}
+              <div className="preview-fallback"><FileImage size={48} /><p>{kind === 'pdf' ? 'PDF document' : kind === 'document' ? 'Document' : kind === 'spreadsheet' ? 'Spreadsheet' : 'File preview'}</p><span>{formatBytes(item.sizeBytes ?? 0)}</span></div>}
         </div>
         <div className="preview-meta">
           <div className="preview-info"><Clock3 size={14} /> Modified {formatRelativeTime(item.updatedAt)}</div>
