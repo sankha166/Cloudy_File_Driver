@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS public.folders (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+
 CREATE TABLE IF NOT EXISTS public.files (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
