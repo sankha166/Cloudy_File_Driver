@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { supabase, MAX_FILE_SIZE, ACCEPTED_TYPES } from './supabase';
+import { supabase, MAX_FILE_SIZE, isAcceptedFile } from './supabase';
 import type { ActivityRow, Breadcrumb, FileRow, FolderRow, LinkShareRow, ShareRow, StarRow, UnifiedItem } from './types';
 import { sanitizeFileName } from './types';
 
@@ -58,6 +58,30 @@ function toUnified(
   return [...folderItems, ...fileItems];
 }
 
+function fail(error: { message?: string; code?: string } | null, fallback: string): never {
+  const extra = error?.message && error.message !== fallback ? ` ${error.message}` : '';
+  throw new Error(`${fallback}${extra}`);
+}
+
+type Filterable = {
+  eq: (column: string, value: unknown) => Filterable;
+  is: (column: string, value: null) => Filterable;
+};
+
+function whereNullableId<T extends Filterable>(query: T, column: string, id: string | null): T {
+  return (id === null ? query.is(column, null) : query.eq(column, id)) as T;
+}
+
+async function logActivity(payload: {
+  actor_id: string;
+  action: string;
+  resource_type: 'file' | 'folder';
+  resource_id: string;
+  context?: Record<string, unknown>;
+}): Promise<void> {
+  await supabase.from('activities').insert({ ...payload, context: payload.context ?? {} });
+}
+
 export function useDrive(userId: string | undefined, currentFolderId: string | null, view: string) {
   const [items, setItems] = useState<UnifiedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,25 +103,32 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
 
     try {
       if (isSharedView) {
-        const { data: shares } = await supabase.from('shares').select('resource_type, resource_id').eq('grantee_user_id', userId);
+        const { data: shares, error: sharesError } = await supabase.from('shares').select('resource_type, resource_id').eq('grantee_user_id', userId);
+        if (sharesError) throw sharesError;
         const fileIds = (shares ?? []).filter((s) => s.resource_type === 'file').map((s) => s.resource_id);
         const folderIds = (shares ?? []).filter((s) => s.resource_type === 'folder').map((s) => s.resource_id);
-        const [filesRes, foldersRes] = await Promise.all([
-          fileIds.length ? supabase.from('files').select('*').in('id', fileIds).eq('is_deleted', false) : Promise.resolve({ data: [] as FileRow[] | null }),
-          folderIds.length ? supabase.from('folders').select('*').in('id', folderIds).eq('is_deleted', false) : Promise.resolve({ data: [] as FolderRow[] | null }),
+        const [filesRes, foldersRes, starsRes] = await Promise.all([
+          fileIds.length ? supabase.from('files').select('*').in('id', fileIds).eq('is_deleted', false) : Promise.resolve({ data: [] as FileRow[] | null, error: null }),
+          folderIds.length ? supabase.from('folders').select('*').in('id', folderIds).eq('is_deleted', false) : Promise.resolve({ data: [] as FolderRow[] | null, error: null }),
+          supabase.from('stars').select('*').eq('user_id', userId),
         ]);
-        const { data: stars } = await supabase.from('stars').select('*').eq('user_id', userId);
-        setItems(toUnified(filesRes.data ?? [], foldersRes.data ?? [], stars ?? [], (shares ?? []) as ShareRow[]));
-        setStarredIds(new Set((stars ?? []).map((s) => s.resource_id)));
+        if (filesRes.error) throw filesRes.error;
+        if (foldersRes.error) throw foldersRes.error;
+        if (starsRes.error) throw starsRes.error;
+        setItems(toUnified(filesRes.data ?? [], foldersRes.data ?? [], starsRes.data ?? [], (shares ?? []) as ShareRow[]));
+        setStarredIds(new Set((starsRes.data ?? []).map((s) => s.resource_id)));
         setBreadcrumbs([{ id: null, name: 'Shared with me' }]);
       } else if (isStarredView) {
-        const { data: stars } = await supabase.from('stars').select('*').eq('user_id', userId);
+        const { data: stars, error: starsError } = await supabase.from('stars').select('*').eq('user_id', userId);
+        if (starsError) throw starsError;
         const fileIds = (stars ?? []).filter((s) => s.resource_type === 'file').map((s) => s.resource_id);
         const folderIds = (stars ?? []).filter((s) => s.resource_type === 'folder').map((s) => s.resource_id);
         const [filesRes, foldersRes] = await Promise.all([
-          fileIds.length ? supabase.from('files').select('*').in('id', fileIds).eq('is_deleted', false) : Promise.resolve({ data: [] as FileRow[] | null }),
-          folderIds.length ? supabase.from('folders').select('*').in('id', folderIds).eq('is_deleted', false) : Promise.resolve({ data: [] as FolderRow[] | null }),
+          fileIds.length ? supabase.from('files').select('*').in('id', fileIds).eq('is_deleted', false) : Promise.resolve({ data: [] as FileRow[] | null, error: null }),
+          folderIds.length ? supabase.from('folders').select('*').in('id', folderIds).eq('is_deleted', false) : Promise.resolve({ data: [] as FolderRow[] | null, error: null }),
         ]);
+        if (filesRes.error) throw filesRes.error;
+        if (foldersRes.error) throw foldersRes.error;
         setItems(toUnified(filesRes.data ?? [], foldersRes.data ?? [], stars ?? [], []));
         setStarredIds(new Set((stars ?? []).map((s) => s.resource_id)));
         setBreadcrumbs([{ id: null, name: 'Starred' }]);
@@ -107,6 +138,8 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
           supabase.from('folders').select('*').eq('owner_id', userId).eq('is_deleted', true),
           supabase.from('stars').select('*').eq('user_id', userId),
         ]);
+        if (filesRes.error) throw filesRes.error;
+        if (foldersRes.error) throw foldersRes.error;
         setItems(toUnified(filesRes.data ?? [], foldersRes.data ?? [], starsRes.data ?? [], []));
         setStarredIds(new Set((starsRes.data ?? []).map((s) => s.resource_id)));
         setBreadcrumbs([{ id: null, name: 'Trash' }]);
@@ -116,16 +149,24 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
           supabase.from('files').select('*').eq('owner_id', userId).eq('is_deleted', false).gte('updated_at', since).order('updated_at', { ascending: false }).limit(50),
           supabase.from('stars').select('*').eq('user_id', userId),
         ]);
+        if (filesRes.error) throw filesRes.error;
         setItems(toUnified(filesRes.data ?? [], [], starsRes.data ?? [], []));
         setStarredIds(new Set((starsRes.data ?? []).map((s) => s.resource_id)));
         setBreadcrumbs([{ id: null, name: 'Recent' }]);
       } else {
+        let filesQuery = supabase.from('files').select('*').eq('owner_id', userId).eq('is_deleted', false);
+        let foldersQuery = supabase.from('folders').select('*').eq('owner_id', userId).eq('is_deleted', false);
+        filesQuery = whereNullableId(filesQuery, 'folder_id', currentFolderId) as typeof filesQuery;
+        foldersQuery = whereNullableId(foldersQuery, 'parent_id', currentFolderId) as typeof foldersQuery;
+
         const [filesRes, foldersRes, starsRes, sharesRes] = await Promise.all([
-          supabase.from('files').select('*').eq('owner_id', userId).eq('is_deleted', false).eq('folder_id', currentFolderId),
-          supabase.from('folders').select('*').eq('owner_id', userId).eq('is_deleted', false).eq('parent_id', currentFolderId),
+          filesQuery,
+          foldersQuery,
           supabase.from('stars').select('*').eq('user_id', userId),
           supabase.from('shares').select('*').eq('created_by', userId),
         ]);
+        if (filesRes.error) throw filesRes.error;
+        if (foldersRes.error) throw foldersRes.error;
         setItems(toUnified(filesRes.data ?? [], foldersRes.data ?? [], starsRes.data ?? [], sharesRes.data ?? []));
         setStarredIds(new Set((starsRes.data ?? []).map((s) => s.resource_id)));
 
@@ -144,16 +185,17 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
         }
       }
 
-      const { count } = await supabase.from('files').select('*', { count: 'exact', head: true }).eq('owner_id', userId).eq('is_deleted', false);
       const { data: sizeData } = await supabase.from('files').select('size_bytes').eq('owner_id', userId).eq('is_deleted', false);
       const totalBytes = (sizeData ?? []).reduce((sum, f) => sum + (f.size_bytes ?? 0), 0);
       setStorageUsedBytes(totalBytes);
-      void count;
 
       const { data: acts } = await supabase.from('activities').select('*').eq('actor_id', userId).order('created_at', { ascending: false }).limit(8);
       setActivities(acts ?? []);
-    } catch {
-      setError('Could not load your files. Please try again.');
+    } catch (err) {
+      const message = err && typeof err === 'object' && 'message' in err && typeof (err as { message: string }).message === 'string'
+        ? (err as { message: string }).message
+        : 'Could not load your files. Please try again.';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -164,37 +206,42 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
   }, [refresh]);
 
   const createFolder = useCallback(async (name: string): Promise<void> => {
-    if (!userId) return;
+    if (!userId) throw new Error('You need to be signed in.');
     const clean = name.trim();
     if (!clean) throw new Error('Folder name cannot be empty.');
-    const { error: insertError } = await supabase.from('folders').insert({
+    const { data, error: insertError } = await supabase.from('folders').insert({
       owner_id: userId,
       parent_id: currentFolderId,
       name: clean,
-    });
+    }).select('id').maybeSingle();
     if (insertError) {
       if (insertError.code === '23505') throw new Error('A folder with this name already exists here.');
-      throw new Error('Could not create the folder.');
+      fail(insertError, 'Could not create the folder.');
     }
-    await supabase.from('activities').insert({ actor_id: userId, action: 'create_folder', resource_type: 'folder', resource_id: '00000000-0000-0000-0000-000000000000', context: { name: clean } });
+    if (data?.id) {
+      await logActivity({ actor_id: userId, action: 'create_folder', resource_type: 'folder', resource_id: data.id, context: { name: clean } });
+    }
     await refresh();
   }, [userId, currentFolderId, refresh]);
 
   const uploadFiles = useCallback(async (files: File[], onProgress?: (fileName: string, percent: number) => void): Promise<void> => {
-    if (!userId) return;
+    if (!userId) throw new Error('You need to be signed in.');
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) throw new Error(`${file.name} exceeds the 100 MB limit.`);
-      if (!ACCEPTED_TYPES.some((t) => t.endsWith('/*') ? file.type.startsWith(t.slice(0, -1)) : t === file.type)) {
+      if (!isAcceptedFile(file)) {
         throw new Error(`${file.name}: this file type is not supported.`);
       }
     }
     for (const file of files) {
-      const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '';
-      const storageKey = `${userId}/${crypto.randomUUID()}${sanitizeFileName(file.name).slice(0, 80)}${ext}`;
-      onProgress?.(file.name, 0);
-      const { error: uploadError } = await supabase.storage.from('drive-files').upload(storageKey, file, { contentType: file.type });
-      if (uploadError) throw new Error(`Could not upload ${file.name}.`);
-      onProgress?.(file.name, 100);
+      const safeName = sanitizeFileName(file.name) || 'file';
+      const storageKey = `${userId}/${crypto.randomUUID()}-${safeName}`;
+      onProgress?.(file.name, 20);
+      const { error: uploadError } = await supabase.storage.from('drive-files').upload(storageKey, file, {
+        contentType: file.type || 'application/octet-stream',
+        upsert: false,
+      });
+      if (uploadError) fail(uploadError, `Could not upload ${file.name}.`);
+      onProgress?.(file.name, 70);
       const { data: fileRec, error: fileError } = await supabase.from('files').insert({
         owner_id: userId,
         folder_id: currentFolderId,
@@ -203,36 +250,42 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
         size_bytes: file.size,
         storage_key: storageKey,
       }).select('*').maybeSingle();
-      if (fileError || !fileRec) throw new Error(`Could not save ${file.name} metadata.`);
+      if (fileError || !fileRec) {
+        await supabase.storage.from('drive-files').remove([storageKey]);
+        fail(fileError, `Could not save ${file.name} metadata.`);
+      }
       await supabase.from('file_versions').insert({
         file_id: fileRec.id,
         version_number: 1,
         storage_key: storageKey,
         size_bytes: file.size,
       });
-      await supabase.from('activities').insert({ actor_id: userId, action: 'upload', resource_type: 'file', resource_id: fileRec.id, context: { name: file.name, size: file.size } });
+      await logActivity({ actor_id: userId, action: 'upload', resource_type: 'file', resource_id: fileRec.id, context: { name: file.name, size: file.size } });
+      onProgress?.(file.name, 100);
     }
     await refresh();
   }, [userId, currentFolderId, refresh]);
 
   const renameItem = useCallback(async (item: UnifiedItem, newName: string): Promise<void> => {
-    if (!userId) return;
+    if (!userId) throw new Error('You need to be signed in.');
     const clean = newName.trim();
     if (!clean) throw new Error('Name cannot be empty.');
     const table = item.kind === 'folder' ? 'folders' : 'files';
     const { error } = await supabase.from(table).update({ name: clean, updated_at: new Date().toISOString() }).eq('id', item.id).eq('owner_id', userId);
-    if (error) throw new Error('Could not rename. The name may already be in use.');
-    await supabase.from('activities').insert({ actor_id: userId, action: 'rename', resource_type: item.kind, resource_id: item.id, context: { name: clean } });
+    if (error) fail(error, 'Could not rename. The name may already be in use.');
+    await logActivity({ actor_id: userId, action: 'rename', resource_type: item.kind, resource_id: item.id, context: { name: clean } });
     await refresh();
   }, [userId, refresh]);
 
   const toggleStar = useCallback(async (item: UnifiedItem): Promise<void> => {
-    if (!userId) return;
+    if (!userId) throw new Error('You need to be signed in.');
     const existing = starredIds.has(item.id);
     if (existing) {
-      await supabase.from('stars').delete().eq('user_id', userId).eq('resource_type', item.kind).eq('resource_id', item.id);
+      const { error } = await supabase.from('stars').delete().eq('user_id', userId).eq('resource_type', item.kind).eq('resource_id', item.id);
+      if (error) fail(error, 'Could not update star.');
     } else {
-      await supabase.from('stars').insert({ user_id: userId, resource_type: item.kind, resource_id: item.id });
+      const { error } = await supabase.from('stars').insert({ user_id: userId, resource_type: item.kind, resource_id: item.id });
+      if (error && error.code !== '23505') fail(error, 'Could not star this item.');
     }
     setStarredIds((prev) => {
       const next = new Set(prev);
@@ -244,55 +297,58 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
   }, [userId, starredIds, refresh]);
 
   const moveToTrash = useCallback(async (item: UnifiedItem): Promise<void> => {
-    if (!userId) return;
+    if (!userId) throw new Error('You need to be signed in.');
     const table = item.kind === 'folder' ? 'folders' : 'files';
     const { error } = await supabase.from(table).update({ is_deleted: true, updated_at: new Date().toISOString() }).eq('id', item.id).eq('owner_id', userId);
-    if (error) throw new Error('Could not move to trash.');
-    await supabase.from('activities').insert({ actor_id: userId, action: 'delete', resource_type: item.kind, resource_id: item.id, context: { name: item.name } });
+    if (error) fail(error, 'Could not move to trash.');
+    await logActivity({ actor_id: userId, action: 'delete', resource_type: item.kind, resource_id: item.id, context: { name: item.name } });
     await refresh();
   }, [userId, refresh]);
 
   const restoreItem = useCallback(async (item: UnifiedItem): Promise<void> => {
-    if (!userId) return;
+    if (!userId) throw new Error('You need to be signed in.');
     const table = item.kind === 'folder' ? 'folders' : 'files';
     const { error } = await supabase.from(table).update({ is_deleted: false, updated_at: new Date().toISOString() }).eq('id', item.id).eq('owner_id', userId);
-    if (error) throw new Error('Could not restore.');
-    await supabase.from('activities').insert({ actor_id: userId, action: 'restore', resource_type: item.kind, resource_id: item.id, context: { name: item.name } });
+    if (error) fail(error, 'Could not restore.');
+    await logActivity({ actor_id: userId, action: 'restore', resource_type: item.kind, resource_id: item.id, context: { name: item.name } });
     await refresh();
   }, [userId, refresh]);
 
   const deletePermanently = useCallback(async (item: UnifiedItem): Promise<void> => {
-    if (!userId) return;
+    if (!userId) throw new Error('You need to be signed in.');
     if (item.kind === 'file' && item.storageKey) {
       await supabase.storage.from('drive-files').remove([item.storageKey]);
     }
     const table = item.kind === 'folder' ? 'folders' : 'files';
     const { error } = await supabase.from(table).delete().eq('id', item.id).eq('owner_id', userId);
-    if (error) throw new Error('Could not delete permanently.');
+    if (error) fail(error, 'Could not delete permanently.');
     await refresh();
   }, [userId, refresh]);
 
   const emptyTrash = useCallback(async (): Promise<void> => {
-    if (!userId) return;
-    const { data: trashFiles } = await supabase.from('files').select('id, storage_key').eq('owner_id', userId).eq('is_deleted', true);
+    if (!userId) throw new Error('You need to be signed in.');
+    const { data: trashFiles, error: filesError } = await supabase.from('files').select('id, storage_key').eq('owner_id', userId).eq('is_deleted', true);
+    if (filesError) fail(filesError, 'Could not empty trash.');
     if (trashFiles && trashFiles.length) {
       await supabase.storage.from('drive-files').remove(trashFiles.map((f) => f.storage_key));
-      await supabase.from('files').delete().in('id', trashFiles.map((f) => f.id));
+      const { error } = await supabase.from('files').delete().in('id', trashFiles.map((f) => f.id));
+      if (error) fail(error, 'Could not empty trash.');
     }
-    await supabase.from('folders').delete().eq('owner_id', userId).eq('is_deleted', true);
+    const { error: foldersError } = await supabase.from('folders').delete().eq('owner_id', userId).eq('is_deleted', true);
+    if (foldersError) fail(foldersError, 'Could not empty trash.');
     await refresh();
   }, [userId, refresh]);
 
   const downloadFile = useCallback(async (item: UnifiedItem): Promise<void> => {
     if (!item.storageKey) return;
-    const { data, error } = await supabase.storage.from('drive-files').createSignedUrl(item.storageKey, 300);
-    if (error || !data) throw new Error('Could not generate download link.');
+    const { data, error } = await supabase.storage.from('drive-files').createSignedUrl(item.storageKey, 300, { download: item.name });
+    if (error || !data) fail(error, 'Could not generate download link.');
     window.open(data.signedUrl, '_blank');
-    if (userId) await supabase.from('activities').insert({ actor_id: userId, action: 'download', resource_type: 'file', resource_id: item.id, context: { name: item.name } });
+    if (userId) await logActivity({ actor_id: userId, action: 'download', resource_type: 'file', resource_id: item.id, context: { name: item.name } });
   }, [userId]);
 
   const createLinkShare = useCallback(async (item: UnifiedItem, password?: string, expiresInHours?: number): Promise<string> => {
-    if (!userId) return '';
+    if (!userId) throw new Error('You need to be signed in.');
     const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '').slice(0, 8);
     let passwordHash: string | null = null;
     if (password) {
@@ -308,26 +364,29 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
       expires_at: expiresAt,
       created_by: userId,
     });
-    if (error) throw new Error('Could not create share link.');
-    await supabase.from('activities').insert({ actor_id: userId, action: 'share', resource_type: item.kind, resource_id: item.id, context: { name: item.name } });
+    if (error) fail(error, 'Could not create share link.');
+    await logActivity({ actor_id: userId, action: 'share', resource_type: item.kind, resource_id: item.id, context: { name: item.name } });
     await refresh();
     return token;
   }, [userId, refresh]);
 
   const getLinkShares = useCallback(async (item: UnifiedItem): Promise<LinkShareRow[]> => {
     if (!userId) return [];
-    const { data } = await supabase.from('link_shares').select('*').eq('resource_type', item.kind).eq('resource_id', item.id).eq('created_by', userId);
+    const { data, error } = await supabase.from('link_shares').select('*').eq('resource_type', item.kind).eq('resource_id', item.id).eq('created_by', userId);
+    if (error) fail(error, 'Could not load share links.');
     return (data ?? []) as LinkShareRow[];
   }, [userId]);
 
   const revokeLinkShare = useCallback(async (id: string): Promise<void> => {
-    await supabase.from('link_shares').delete().eq('id', id);
+    const { error } = await supabase.from('link_shares').delete().eq('id', id);
+    if (error) fail(error, 'Could not revoke link.');
     await refresh();
   }, [refresh]);
 
   const inviteUser = useCallback(async (item: UnifiedItem, email: string, role: 'viewer' | 'editor'): Promise<void> => {
-    if (!userId) return;
-    const { data: profile } = await supabase.from('profiles').select('id').eq('email', email.toLowerCase().trim()).maybeSingle();
+    if (!userId) throw new Error('You need to be signed in.');
+    const { data: profile, error: profileError } = await supabase.from('profiles').select('id').eq('email', email.toLowerCase().trim()).maybeSingle();
+    if (profileError) fail(profileError, 'Could not look up that user.');
     if (!profile) throw new Error('No user found with that email. They need to sign up first.');
     if (profile.id === userId) throw new Error('You cannot share with yourself.');
     const { error } = await supabase.from('shares').insert({
@@ -339,15 +398,16 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
     });
     if (error) {
       if (error.code === '23505') throw new Error('This person already has access.');
-      throw new Error('Could not share with that user.');
+      fail(error, 'Could not share with that user.');
     }
-    await supabase.from('activities').insert({ actor_id: userId, action: 'share', resource_type: item.kind, resource_id: item.id, context: { name: item.name, with: email } });
+    await logActivity({ actor_id: userId, action: 'share', resource_type: item.kind, resource_id: item.id, context: { name: item.name, with: email } });
     await refresh();
   }, [userId, refresh]);
 
   const getShares = useCallback(async (item: UnifiedItem): Promise<(ShareRow & { grantee_email: string })[]> => {
     if (!userId) return [];
-    const { data } = await supabase.from('shares').select('*, grantee_user_id').eq('resource_type', item.kind).eq('resource_id', item.id).eq('created_by', userId);
+    const { data, error } = await supabase.from('shares').select('*').eq('resource_type', item.kind).eq('resource_id', item.id).eq('created_by', userId);
+    if (error) fail(error, 'Could not load people with access.');
     const shares = (data ?? []) as ShareRow[];
     if (!shares.length) return [];
     const profileIds = shares.map((s) => s.grantee_user_id);
@@ -357,7 +417,9 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
   }, [userId]);
 
   const revokeShare = useCallback(async (id: string): Promise<void> => {
-    await supabase.from('shares').delete().eq('id', id).eq('created_by', userId!);
+    if (!userId) throw new Error('You need to be signed in.');
+    const { error } = await supabase.from('shares').delete().eq('id', id).eq('created_by', userId);
+    if (error) fail(error, 'Could not revoke access.');
     await refresh();
   }, [userId, refresh]);
 

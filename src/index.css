@@ -67,8 +67,10 @@ body {
   display: grid; place-items: center;
   box-shadow: 0 6px 16px rgba(49, 92, 255, 0.35);
 }
+.new-wrap { position: relative; margin-bottom: 22px; }
 .new-button {
   display: flex; align-items: center; gap: 8px;
+  width: 100%;
   background: var(--primary);
   color: white;
   border: none;
@@ -79,10 +81,38 @@ body {
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(49, 92, 255, 0.28);
   transition: all 0.18s ease;
-  margin-bottom: 22px;
 }
-.new-button:hover { background: var(--primary-600); transform: translateY(-1px); box-shadow: 0 8px 22px rgba(49, 92, 255, 0.34); }
+.new-button:hover:not(:disabled) { background: var(--primary-600); transform: translateY(-1px); box-shadow: 0 8px 22px rgba(49, 92, 255, 0.34); }
+.new-button:disabled { opacity: 0.5; cursor: not-allowed; }
 .new-button svg:last-child { margin-left: auto; opacity: 0.8; }
+.new-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+}
+.new-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.new-menu button:hover { background: var(--surface-2); }
 
 .side-nav { flex: 1; overflow-y: auto; }
 .nav-label {

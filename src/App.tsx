@@ -23,6 +23,7 @@ function App() {
   const [sortAsc, setSortAsc] = useState(true);
   const [layout, setLayout] = useState<'list' | 'grid'>('list');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [folderName, setFolderName] = useState('');
   const [folderError, setFolderError] = useState('');
@@ -47,6 +48,7 @@ function App() {
 
   useEffect(() => {
     setMenuOpen(false);
+    setNewMenuOpen(false);
   }, [view, currentFolderId]);
 
   const showNotice = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
@@ -81,6 +83,7 @@ function App() {
       await drive.createFolder(folderName);
       setFolderName('');
       setNewFolderOpen(false);
+      setView('My Drive');
       showNotice('Folder created.');
     } catch (err) {
       setFolderError(err instanceof Error ? err.message : 'Could not create folder.');
@@ -96,6 +99,7 @@ function App() {
       await drive.uploadFiles(files, (fileName, percent) => {
         setUploads((prev) => prev.map((u) => u.name === fileName ? { ...u, percent } : u));
       });
+      setView('My Drive');
       showNotice(`${files.length} ${files.length === 1 ? 'file' : 'files'} uploaded.`);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : 'Upload failed.', 'error');
@@ -113,6 +117,7 @@ function App() {
       await drive.uploadFiles(files, (fileName, percent) => {
         setUploads((prev) => prev.map((u) => u.name === fileName ? { ...u, percent } : u));
       });
+      setView('My Drive');
       showNotice(`${files.length} ${files.length === 1 ? 'file' : 'files'} uploaded.`);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : 'Upload failed.', 'error');
@@ -185,7 +190,16 @@ function App() {
     <div className="app-shell" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark"><Cloud size={19} strokeWidth={2.7} /></span><span>Cloudly</span></div>
-        <button className="new-button" onClick={() => setNewFolderOpen(true)} disabled={view === 'Trash'}><Plus size={17} /> New <ChevronDown size={15} /></button>
+        <div className="new-wrap">
+          <button className="new-button" onClick={() => setNewMenuOpen((o) => !o)} disabled={view === 'Trash'}><Plus size={17} /> New <ChevronDown size={15} /></button>
+          {newMenuOpen && view !== 'Trash' && (
+            <div className="new-menu">
+              <button type="button" onClick={() => { setNewMenuOpen(false); setNewFolderOpen(true); }}><Folder size={16} /> New folder</button>
+              <button type="button" onClick={() => { setNewMenuOpen(false); fileRef.current?.click(); }}><Upload size={16} /> File upload</button>
+            </div>
+          )}
+        </div>
+        <input ref={fileRef} type="file" multiple hidden onChange={handleFiles} />
         <nav className="side-nav" aria-label="Main navigation">
           <p className="nav-label">Workspace</p>
           {(['My Drive', 'Shared with me', 'Recent', 'Starred', 'Trash'] as View[]).map((navView) => (
@@ -243,7 +257,6 @@ function App() {
               <div className="heading-actions">
                 <button className="outline-button" onClick={() => setNewFolderOpen(true)}><Folder size={16} /> New folder</button>
                 <button className="primary-button" onClick={() => fileRef.current?.click()}><Upload size={16} /> Upload</button>
-                <input ref={fileRef} type="file" multiple hidden onChange={handleFiles} />
               </div>
             )}
             {view === 'Trash' && drive.items.length > 0 && (
@@ -421,7 +434,7 @@ function FileRow({ item, starred, isTrash, onOpen, onStar, onShare, onRename, on
   item: UnifiedItem; starred: boolean; isTrash: boolean;
   onOpen: () => void; onStar: () => void; onShare: () => void; onRename: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void; onPermanentDelete: () => void;
 }) {
-  const kind = fileKindFromMime(item.mimeType ?? '', item.name);
+  const kind = item.kind === 'folder' ? 'folder' : fileKindFromMime(item.mimeType ?? '', item.name);
   const color = fileColorFromKind(kind);
   return (
     <div className="file-row">
@@ -458,7 +471,7 @@ function FileCard({ item, starred, isTrash, onOpen, onStar, onShare, onDownload,
   item: UnifiedItem; starred: boolean; isTrash: boolean;
   onOpen: () => void; onStar: () => void; onShare: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void;
 }) {
-  const kind = fileKindFromMime(item.mimeType ?? '', item.name);
+  const kind = item.kind === 'folder' ? 'folder' : fileKindFromMime(item.mimeType ?? '', item.name);
   const color = fileColorFromKind(kind);
   return (
     <div className="file-card" onClick={onOpen}>
