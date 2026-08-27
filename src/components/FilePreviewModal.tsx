@@ -13,13 +13,17 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const kind = fileKindFromMime(item.mimeType ?? '', item.name);
   const isImage = kind === 'image';
+  const isPdf = kind === 'pdf';
+  const isText = kind === 'document';
 
   useEffect(() => {
     if (!item.storageKey) { setLoading(false); return; }
-    supabase.storage.from('drive-files').createSignedUrl(item.storageKey, 300).then(({ data, error }) => {
+    supabase.storage.from('drive-files').createSignedUrl(item.storageKey, 3600).then(({ data, error }) => {
       if (!error && data) setUrl(data.signedUrl);
+      else setPreviewError('Could not load preview.');
       setLoading(false);
     });
   }, [item.storageKey]);
@@ -34,9 +38,30 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
       <div className="modal modal-preview" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-title"><h2 className="preview-title">{item.name}</h2><button onClick={onClose}><X size={18} /></button></div>
         <div className="preview-body">
-          {loading ? <div className="preview-loading"><Loader2 size={28} className="spin" /></div> :
-            isImage && url ? <img src={url} alt={item.name} className="preview-image" /> :
-              <div className="preview-fallback"><FileImage size={48} /><p>{kind === 'pdf' ? 'PDF document' : kind === 'document' ? 'Document' : kind === 'spreadsheet' ? 'Spreadsheet' : 'File preview'}</p><span>{formatBytes(item.sizeBytes ?? 0)}</span></div>}
+          {loading ? (
+            <div className="preview-loading"><Loader2 size={28} className="spin" /></div>
+          ) : previewError ? (
+            <div className="preview-fallback"><FileImage size={48} /><p>Preview unavailable</p><span>{previewError}</span></div>
+          ) : isImage && url ? (
+            <img src={url} alt={item.name} className="preview-image" />
+          ) : isPdf && url ? (
+            <iframe
+              src={`${url}#toolbar=0&navpanes=0`}
+              className="preview-pdf"
+              title="PDF Preview"
+              onError={() => setPreviewError('Could not load PDF preview')}
+            />
+          ) : isText && url ? (
+            <iframe
+              src={url}
+              className="preview-text"
+              title="Document Preview"
+              sandbox="allow-same-origin"
+              onError={() => setPreviewError('Could not load document preview')}
+            />
+          ) : (
+            <div className="preview-fallback"><FileImage size={48} /><p>{kind === 'pdf' ? 'PDF document' : kind === 'document' ? 'Document' : kind === 'spreadsheet' ? 'Spreadsheet' : 'File preview'}</p><span>{formatBytes(item.sizeBytes ?? 0)}</span></div>
+          )}
         </div>
         <div className="preview-meta">
           <div className="preview-info"><Clock3 size={14} /> Modified {formatRelativeTime(item.updatedAt)}</div>

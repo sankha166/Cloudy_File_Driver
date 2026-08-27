@@ -91,7 +91,26 @@ export function useAuth() {
     if (data) setProfile(data as Profile);
   }, [session]);
 
-  return { session, profile, loading, signIn, signUp, signOut, updateProfile };
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    if (!session?.user) throw new Error('Not signed in.');
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+    if (updateError) throw new Error('Could not change password: ' + updateError.message);
+  }, [session]);
+
+  const updateAvatar = useCallback(async (file: File) => {
+    if (!session?.user) throw new Error('Not signed in.');
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${session.user.id}-${Date.now()}.${fileExt}`;
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(fileName, file, { upsert: true });
+    if (uploadError) throw new Error('Could not upload avatar.');
+    const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+    const avatarUrl = data?.publicUrl;
+    await updateProfile({ avatar_color: avatarUrl });
+  }, [session, updateProfile]);
+
+  return { session, profile, loading, signIn, signUp, signOut, updateProfile, changePassword, updateAvatar };
 }
 
 function mapAuthError(message: string): string {
