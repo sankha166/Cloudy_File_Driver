@@ -15,11 +15,14 @@ export const ACCEPTED_TYPES = [
   'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
+  'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac',
 ];
 
 const ACCEPTED_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'pdf', 'txt', 'csv', 'json', 'zip',
   'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'md', 'rtf',
+  'mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'mp3', 'wav', 'm4a', 'aac',
 ]);
 
 export function isAcceptedFile(file: File): boolean {
@@ -28,6 +31,8 @@ export function isAcceptedFile(file: File): boolean {
     return !ext || ACCEPTED_EXTENSIONS.has(ext);
   }
   if (file.type.startsWith('image/')) return true;
+  if (file.type.startsWith('video/')) return true;
+  if (file.type.startsWith('audio/')) return true;
   if (ACCEPTED_TYPES.includes(file.type)) return true;
   const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.') + 1).toLowerCase() : '';
   return ACCEPTED_EXTENSIONS.has(ext);
