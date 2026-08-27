@@ -3,7 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import {
   ArrowDown, ArrowUp, Bell, Check, ChevronDown, ChevronRight, Clock3, Cloud, CloudUpload,
   Download, File, FileImage, Folder, FolderOpen, Grid2X2, List, Loader2, LogOut, MoreHorizontal,
-  Pencil, Plus, Search, Share2, ShieldCheck, Star, Trash2, Upload, UserPlus, X, RotateCcw,
+  Pencil, Plus, Search, Share2, ShieldCheck, Star, Trash2, Upload, UserPlus, X, RotateCcw, Settings, Moon, Sun,
 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { useDrive, STORAGE_LIMIT_BYTES } from '@/lib/useDrive';
@@ -12,11 +12,24 @@ import { fileColorFromKind, fileKindFromMime, formatBytes, formatRelativeTime } 
 import { AuthScreen } from '@/components/AuthScreen';
 import { ShareModal } from '@/components/ShareModal';
 import { FilePreviewModal } from '@/components/FilePreviewModal';
+import { PublicSharePage } from '@/components/PublicSharePage';
+import { ProfileSettingsModal } from '@/components/ProfileSettingsModal';
+import { NotificationsPanel } from '@/components/NotificationsPanel';
 
 type View = 'My Drive' | 'Shared with me' | 'Recent' | 'Starred' | 'Trash';
 
 function App() {
-  const { session, profile, loading: authLoading, signIn, signUp, signOut } = useAuth();
+  const { session, profile, loading: authLoading, signIn, signUp, signOut, updateProfile, changePassword, updateAvatar } = useAuth();
+  
+  // Check if this is a public share link route
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const publicShareMatch = pathname.match(/^\/s\/([a-zA-Z0-9-_]+)$/);
+  
+  if (publicShareMatch) {
+    const token = publicShareMatch[1];
+    return <PublicSharePage token={token} />;
+  }
+
   const [view, setView] = useState<View>('My Drive');
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -35,6 +48,9 @@ function App() {
   const [noticeType, setNoticeType] = useState<'success' | 'error'>('success');
   const [uploads, setUploads] = useState<{ name: string; percent: number }[]>([]);
   const [authBusy, setAuthBusy] = useState(false);
+  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('darkMode') === 'true');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const userId = session?.user?.id;
@@ -50,6 +66,11 @@ function App() {
     setMenuOpen(false);
     setNewMenuOpen(false);
   }, [view, currentFolderId]);
+
+  useEffect(() => {
+    localStorage.setItem('darkMode', String(darkMode));
+    document.documentElement.classList.toggle('dark-mode', darkMode);
+  }, [darkMode]);
 
   const showNotice = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
     setNotice(msg);
@@ -233,13 +254,18 @@ function App() {
         <header className="topbar">
           <div className="search-wrap"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search files and folders" /></div>
           <div className="top-actions">
-            <button className="icon-button"><Bell size={19} /></button>
+            <button className="icon-button" onClick={() => setNotificationsOpen((o) => !o)} title="Notifications"><Bell size={19} /></button>
+            <button className="icon-button" onClick={() => setDarkMode(!darkMode)} title="Toggle dark mode">{darkMode ? <Sun size={19} /> : <Moon size={19} />}</button>
             <button className="avatar avatar-header" onClick={() => setMenuOpen((o) => !o)}>{initials}</button>
+            {notificationsOpen && (
+              <NotificationsPanel userId={userId} onClose={() => setNotificationsOpen(false)} />
+            )}
             {menuOpen && (
               <div className="account-menu">
                 <strong>{profile?.full_name || 'Your account'}</strong>
                 <span>{profile?.email}</span>
                 <hr />
+                <button onClick={() => { setMenuOpen(false); setProfileSettingsOpen(true); }}><Settings size={15} /> Profile Settings</button>
                 <button onClick={signOut}><LogOut size={15} /> Sign out</button>
               </div>
             )}
@@ -407,6 +433,17 @@ function App() {
           onClose={() => setPreviewItem(null)}
           onDownload={() => handleDownload(previewItem)}
           onDelete={() => handleDelete(previewItem)}
+        />
+      )}
+
+      {profileSettingsOpen && (
+        <ProfileSettingsModal
+          profile={profile}
+          onClose={() => setProfileSettingsOpen(false)}
+          onUpdateProfile={updateProfile}
+          onChangePassword={changePassword}
+          onUpdateAvatar={updateAvatar}
+          busy={authBusy}
         />
       )}
     </div>
