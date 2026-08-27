@@ -379,6 +379,7 @@ body {
 .modal-title h2 { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
 .modal-title button { border: none; background: var(--surface-2); width: 32px; height: 32px; border-radius: 8px; color: var(--text-muted); cursor: pointer; display: grid; place-items: center; transition: all 0.15s; }
 .modal-title button:hover { background: var(--border); color: var(--text); }
+.preview-title-actions { display: flex; gap: 6px; }
 .modal-form { display: flex; flex-direction: column; gap: 16px; }
 .modal-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-soft); }
 .modal-form input { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 11px 14px; font-size: 14px; color: var(--text); outline: none; transition: all 0.15s; font-family: inherit; }
@@ -518,6 +519,9 @@ body {
 .preview-body { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); min-height: min(70vh, 720px); height: min(70vh, 720px); display: grid; place-items: center; margin-bottom: 16px; overflow: hidden; }
 .preview-loading { color: var(--primary); }
 .preview-image { max-width: 100%; max-height: 420px; object-fit: contain; border-radius: var(--radius-sm); }
+.preview-video { width: 100%; height: 100%; max-height: 100%; object-fit: contain; background: #000; }
+.preview-body:fullscreen { background: #000; border: 0; border-radius: 0; margin: 0; height: 100vh; width: 100vw; }
+.preview-body:fullscreen .preview-pdf, .preview-body:fullscreen .preview-text { min-height: 100vh; }
 .preview-fallback { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-muted); }
 .preview-fallback p { font-size: 15px; font-weight: 600; margin: 0; color: var(--text-soft); }
 .preview-fallback span { font-size: 13px; }
@@ -612,15 +616,21 @@ body {
 
 /* ---------- Dark mode ---------- */
 :root.dark-mode {
-  --bg: #1A1D2E;
-  --surface: #242A3F;
-  --surface-2: #2D3447;
-  --border: #3A404F;
-  --border-strong: #4A5266;
-  --text: #F3F4F6;
-  --text-soft: #D1D5DB;
-  --text-muted: #9CA3AF;
+  --bg: #050505;
+  --surface: #111111;
+  --surface-2: #1B1B1B;
+  --border: #2D2D2D;
+  --border-strong: #414141;
+  --text: #F5F5F5;
+  --text-soft: #D4D4D4;
+  --text-muted: #999999;
 }
+:root.dark-mode .topbar { background: rgba(5, 5, 5, 0.9); }
+:root.dark-mode .preview-body { background: #080808; }
+:root.dark-mode .file-symbol.violet { background: #29233D; color: #B8A9FF; }
+:root.dark-mode .file-symbol.red { background: #3B2023; color: #FF9B9F; }
+:root.dark-mode .file-symbol.blue, :root.dark-mode .file-symbol.folder { background: #172748; color: #8DB0FF; }
+:root.dark-mode .file-symbol.green { background: #173426; color: #79DCA5; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 960px) {

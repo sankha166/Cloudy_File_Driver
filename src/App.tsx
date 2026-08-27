@@ -326,6 +326,7 @@ function DriveApp() {
                   item={item}
                   starred={drive.starredIds.has(item.id)}
                   isTrash={view === 'Trash'}
+                  canEdit={!item.shared || item.sharedRole === 'editor'}
                   onOpen={() => openItem(item)}
                   onStar={() => drive.toggleStar(item)}
                   onShare={() => setShareItem(item)}
@@ -459,8 +460,8 @@ function EmptyState({ view, onUpload, onCreateFolder }: { view: string; onUpload
   );
 }
 
-function FileRow({ item, starred, isTrash, onOpen, onStar, onShare, onRename, onDownload, onDelete, onRestore, onPermanentDelete }: {
-  item: UnifiedItem; starred: boolean; isTrash: boolean;
+function FileRow({ item, starred, isTrash, canEdit, onOpen, onStar, onShare, onRename, onDownload, onDelete, onRestore, onPermanentDelete }: {
+  item: UnifiedItem; starred: boolean; isTrash: boolean; canEdit: boolean;
   onOpen: () => void; onStar: () => void; onShare: () => void; onRename: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void; onPermanentDelete: () => void;
 }) {
   const kind = item.kind === 'folder' ? 'folder' : fileKindFromMime(item.mimeType ?? '', item.name);
@@ -473,7 +474,7 @@ function FileRow({ item, starred, isTrash, onOpen, onStar, onShare, onRename, on
         {starred && <Star size={13} className="star-filled" fill="currentColor" />}
         {item.shared && <Share2 size={12} className="shared-icon" />}
       </div>
-      <div className="owner-cell"><span className="avatar avatar-tiny">YO</span>You</div>
+      <div className="owner-cell"><span className="avatar avatar-tiny">{item.shared ? 'SH' : 'YO'}</span>{item.shared ? `Shared · ${item.sharedRole === 'editor' ? 'Editor' : 'Viewer'}` : 'You'}</div>
       <span className="muted-cell">{formatRelativeTime(item.updatedAt)}</span>
       <span className="muted-cell">{item.kind === 'folder' ? '—' : formatBytes(item.sizeBytes ?? 0)}</span>
       <div className="row-actions">
@@ -486,9 +487,9 @@ function FileRow({ item, starred, isTrash, onOpen, onStar, onShare, onRename, on
           <>
             <button title="Star" onClick={onStar}><Star size={15} fill={starred ? 'currentColor' : 'none'} /></button>
             {item.kind === 'file' && <button title="Download" onClick={onDownload}><Download size={15} /></button>}
-            <button title="Rename" onClick={onRename}><Pencil size={15} /></button>
-            <button title="Share" onClick={onShare}><Share2 size={15} /></button>
-            <button title="Move to trash" onClick={onDelete}><Trash2 size={15} /></button>
+            {canEdit && <button title="Rename" onClick={onRename}><Pencil size={15} /></button>}
+            {!item.shared && <button title="Share" onClick={onShare}><Share2 size={15} /></button>}
+            {canEdit && <button title="Move to trash" onClick={onDelete}><Trash2 size={15} /></button>}
           </>
         )}
       </div>

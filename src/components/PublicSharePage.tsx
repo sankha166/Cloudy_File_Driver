@@ -4,7 +4,7 @@ import type { UnifiedItem } from '@/lib/types';
 import { fileKindFromMime, formatBytes, formatRelativeTime } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 
-type PublicLink = { resource_type: 'file' | 'folder'; resource_id: string; expires_at: string | null; password_protected: boolean; password_hash: string | null };
+type PublicLink = { resource_type: 'file' | 'folder'; resource_id: string; expires_at: string | null; password_protected: boolean };
 
 export function PublicSharePage({ token }: { token: string }) {
   const [item, setItem] = useState<UnifiedItem | null>(null);
@@ -156,7 +156,8 @@ export function PublicSharePage({ token }: { token: string }) {
       }
 
       // Simple password verification (server should handle this)
-      const passwordMatch = linkShare.password_hash ? await verifyPassword(passwordInput, linkShare.password_hash) : false;
+      const { data: passwordMatch, error: passwordError } = await supabase.rpc('verify_link_share_password', { p_token: token, p_password: passwordInput });
+      if (passwordError) throw passwordError;
       if (!passwordMatch) {
         setPasswordError('Incorrect password.');
         return;
@@ -169,16 +170,6 @@ export function PublicSharePage({ token }: { token: string }) {
     }
   };
 
-  const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
-    // In production, use bcrypt comparison on the server
-    // For now, this is a placeholder - implement server-side verification
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    return hashHex === hash;
-  };
 
   const handleDownload = async () => {
     if (!item || !url) return;
@@ -202,6 +193,7 @@ export function PublicSharePage({ token }: { token: string }) {
   const isImage = item && fileKindFromMime(item.mimeType ?? '', item.name) === 'image';
   const isPdf = item && fileKindFromMime(item.mimeType ?? '', item.name) === 'pdf';
   const isText = item && fileKindFromMime(item.mimeType ?? '', item.name) === 'document';
+  const isVideo = item && (item.mimeType?.startsWith('video/') || /\.(mp4|webm|ogg|mov|avi|mkv)$/i.test(item.name));
 
   return (
     <div className="public-share-page">
@@ -261,6 +253,9 @@ export function PublicSharePage({ token }: { token: string }) {
                     title="PDF Preview"
                   />
                 )}
+                {isVideo && url && (
+                  <video src={url} className="preview-video" controls playsInline />
+                )}
                 {isText && url && (
                   <iframe
                     src={url}
@@ -269,7 +264,7 @@ export function PublicSharePage({ token }: { token: string }) {
                     sandbox="allow-same-origin"
                   />
                 )}
-                {!isImage && !isPdf && !isText && (
+                {!isImage && !isPdf && !isVideo && !isText && (
                   <div className="preview-fallback">
                     <File size={48} />
                     <p>{item.name}</p>

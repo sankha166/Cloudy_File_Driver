@@ -25,6 +25,7 @@ function toUnified(
   const starredFolderIds = new Set(stars.filter((s) => s.resource_type === 'folder').map((s) => s.resource_id));
   const sharedFileIds = new Set(shares.filter((s) => s.resource_type === 'file').map((s) => s.resource_id));
   const sharedFolderIds = new Set(shares.filter((s) => s.resource_type === 'folder').map((s) => s.resource_id));
+  const sharedRoles = new Map(shares.map((s) => [`${s.resource_type}:${s.resource_id}`, s.role]));
 
   const folderItems: UnifiedItem[] = folders.map((f) => ({
     id: f.id,
@@ -36,6 +37,7 @@ function toUnified(
     updatedAt: f.updated_at,
     starred: starredFolderIds.has(f.id),
     shared: sharedFolderIds.has(f.id),
+    sharedRole: sharedRoles.get(`folder:${f.id}`),
     ownerId: f.owner_id,
   }));
 
@@ -52,6 +54,7 @@ function toUnified(
     updatedAt: f.updated_at,
     starred: starredFileIds.has(f.id),
     shared: sharedFileIds.has(f.id),
+    sharedRole: sharedRoles.get(`file:${f.id}`),
     ownerId: f.owner_id,
   }));
 
@@ -103,7 +106,7 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
 
     try {
       if (isSharedView) {
-        const { data: shares, error: sharesError } = await supabase.from('shares').select('resource_type, resource_id').eq('grantee_user_id', userId);
+        const { data: shares, error: sharesError } = await supabase.from('shares').select('*').eq('grantee_user_id', userId);
         if (sharesError) throw sharesError;
         const fileIds = (shares ?? []).filter((s) => s.resource_type === 'file').map((s) => s.resource_id);
         const folderIds = (shares ?? []).filter((s) => s.resource_type === 'folder').map((s) => s.resource_id);

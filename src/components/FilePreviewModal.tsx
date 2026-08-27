@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Clock3, Download, FileImage, FileText, Loader2, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Clock3, Download, Expand, FileImage, FileText, Loader2, Trash2, X } from 'lucide-react';
 import type { UnifiedItem } from '@/lib/types';
 import { fileKindFromMime, formatBytes, formatRelativeTime } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
@@ -14,10 +14,12 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const previewRef = useRef<HTMLDivElement>(null);
   const kind = fileKindFromMime(item.mimeType ?? '', item.name);
   const isImage = kind === 'image';
   const isPdf = kind === 'pdf';
   const isText = kind === 'document';
+  const isVideo = item.mimeType?.startsWith('video/') || /\.(mp4|webm|ogg|mov|avi|mkv)$/i.test(item.name);
   const isOfficeDocument = /\.(docx?|xlsx?|pptx?)$/i.test(item.name);
 
   useEffect(() => {
@@ -34,11 +36,17 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
     try { await onDownload(); } finally { setDownloading(false); }
   };
 
+  const handleFullscreen = async () => {
+    if (!previewRef.current) return;
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await previewRef.current.requestFullscreen();
+  };
+
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal modal-preview" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="modal-title"><h2 className="preview-title">{item.name}</h2><button onClick={onClose}><X size={18} /></button></div>
-        <div className="preview-body">
+        <div className="modal-title"><h2 className="preview-title">{item.name}</h2><div className="preview-title-actions"><button onClick={handleFullscreen} title="Full screen"><Expand size={17} /></button><button onClick={onClose} title="Close"><X size={18} /></button></div></div>
+        <div className="preview-body" ref={previewRef}>
           {loading ? (
             <div className="preview-loading"><Loader2 size={28} className="spin" /></div>
           ) : previewError ? (
@@ -52,6 +60,8 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
               title="PDF Preview"
               onError={() => setPreviewError('Could not load PDF preview')}
             />
+          ) : isVideo && url ? (
+            <video src={url} className="preview-video" controls playsInline onError={() => setPreviewError('Could not load video preview')} />
           ) : isText && url ? (
             <iframe
               src={isOfficeDocument ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}` : url}

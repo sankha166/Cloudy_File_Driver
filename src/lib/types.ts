@@ -84,6 +84,7 @@ export interface UnifiedItem {
   updatedAt: string;
   starred: boolean;
   shared: boolean;
+  sharedRole?: 'viewer' | 'editor';
   ownerId: string;
 }
 
