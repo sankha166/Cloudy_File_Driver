@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase, MAX_FILE_SIZE, isAcceptedFile } from './supabase';
-import type { ActivityRow, Breadcrumb, FileRow, FolderRow, LinkShareRow, ShareRow, StarRow, UnifiedItem } from './types';
+import type { ActivityRow, Breadcrumb, FileRow, FolderRow, LinkShareRow, OwnerProfile, ShareRow, StarRow, UnifiedItem } from './types';
 import { sanitizeFileName } from './types';
 
 export interface DriveState {
@@ -11,6 +11,7 @@ export interface DriveState {
   starredIds: Set<string>;
   storageUsedBytes: number;
   activities: ActivityRow[];
+  ownerProfiles: Record<string, OwnerProfile>;
 }
 
 const STORAGE_LIMIT_BYTES = 10 * 1024 * 1024 * 1024;
@@ -93,6 +94,7 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set());
   const [storageUsedBytes, setStorageUsedBytes] = useState(0);
   const [activities, setActivities] = useState<ActivityRow[]>([]);
+  const [ownerProfiles, setOwnerProfiles] = useState<Record<string, OwnerProfile>>({});
 
   const refresh = useCallback(async () => {
     if (!userId) return;
@@ -118,6 +120,9 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
         if (filesRes.error) throw filesRes.error;
         if (foldersRes.error) throw foldersRes.error;
         if (starsRes.error) throw starsRes.error;
+        const ownerIds = [...new Set([...(filesRes.data ?? []).map((file) => file.owner_id), ...(foldersRes.data ?? []).map((folder) => folder.owner_id)])];
+        const { data: profiles } = ownerIds.length ? await supabase.from('profiles').select('id, full_name, email, avatar_color').in('id', ownerIds) : { data: [] };
+        setOwnerProfiles(Object.fromEntries((profiles ?? []).map((profile) => [profile.id, { full_name: profile.full_name, email: profile.email, avatar_url: profile.avatar_color?.startsWith('http') ? profile.avatar_color : null }])));
         setItems(toUnified(filesRes.data ?? [], foldersRes.data ?? [], starsRes.data ?? [], (shares ?? []) as ShareRow[]));
         setStarredIds(new Set((starsRes.data ?? []).map((s) => s.resource_id)));
         setBreadcrumbs([{ id: null, name: 'Shared with me' }]);
@@ -427,7 +432,7 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
   }, [userId, refresh]);
 
   return {
-    items, loading, error, breadcrumbs, starredIds, storageUsedBytes, activities,
+    items, loading, error, breadcrumbs, starredIds, storageUsedBytes, activities, ownerProfiles,
     refresh, createFolder, uploadFiles, renameItem, toggleStar, moveToTrash,
     restoreItem, deletePermanently, emptyTrash, downloadFile, createLinkShare,
     getLinkShares, revokeLinkShare, inviteUser, getShares, revokeShare,

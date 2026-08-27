@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import {
   ArrowDown, ArrowUp, Bell, Check, ChevronDown, ChevronRight, Clock3, Cloud, CloudUpload,
-  Download, File, FileImage, Folder, FolderOpen, Grid2X2, List, Loader2, LogOut, MoreHorizontal,
+  Archive, Download, File, FileAudio, FileCode2, FileImage, FileSpreadsheet, FileText, FileVideo, Folder, FolderOpen, Grid2X2, List, Loader2, LogOut, MoreHorizontal,
   Pencil, Plus, Search, Share2, ShieldCheck, Star, Trash2, Upload, UserPlus, X, RotateCcw, Settings, Moon, Sun,
 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
@@ -15,6 +15,7 @@ import { FilePreviewModal } from '@/components/FilePreviewModal';
 import { PublicSharePage } from '@/components/PublicSharePage';
 import { ProfileSettingsModal } from '@/components/ProfileSettingsModal';
 import { NotificationsPanel } from '@/components/NotificationsPanel';
+import { supabase } from '@/lib/supabase';
 
 type View = 'My Drive' | 'Shared with me' | 'Recent' | 'Starred' | 'Trash';
 
@@ -327,6 +328,8 @@ function DriveApp() {
                   starred={drive.starredIds.has(item.id)}
                   isTrash={view === 'Trash'}
                   canEdit={!item.shared || item.sharedRole === 'editor'}
+                  isOwner={item.ownerId === userId}
+                  ownerProfile={item.shared ? drive.ownerProfiles[item.ownerId] : profile ? { full_name: profile.full_name, email: profile.email, avatar_url: avatar } : undefined}
                   onOpen={() => openItem(item)}
                   onStar={() => drive.toggleStar(item)}
                   onShare={() => setShareItem(item)}
@@ -346,6 +349,9 @@ function DriveApp() {
                   item={item}
                   starred={drive.starredIds.has(item.id)}
                   isTrash={view === 'Trash'}
+                  canEdit={!item.shared || item.sharedRole === 'editor'}
+                  isOwner={item.ownerId === userId}
+                  ownerProfile={item.shared ? drive.ownerProfiles[item.ownerId] : profile ? { full_name: profile.full_name, email: profile.email, avatar_url: avatar } : undefined}
                   onOpen={() => openItem(item)}
                   onStar={() => drive.toggleStar(item)}
                   onShare={() => setShareItem(item)}
@@ -460,8 +466,8 @@ function EmptyState({ view, onUpload, onCreateFolder }: { view: string; onUpload
   );
 }
 
-function FileRow({ item, starred, isTrash, canEdit, onOpen, onStar, onShare, onRename, onDownload, onDelete, onRestore, onPermanentDelete }: {
-  item: UnifiedItem; starred: boolean; isTrash: boolean; canEdit: boolean;
+function FileRow({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpen, onStar, onShare, onRename, onDownload, onDelete, onRestore, onPermanentDelete }: {
+  item: UnifiedItem; starred: boolean; isTrash: boolean; canEdit: boolean; isOwner: boolean; ownerProfile?: { full_name: string; email: string; avatar_url: string | null };
   onOpen: () => void; onStar: () => void; onShare: () => void; onRename: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void; onPermanentDelete: () => void;
 }) {
   const kind = item.kind === 'folder' ? 'folder' : fileKindFromMime(item.mimeType ?? '', item.name);
@@ -470,11 +476,11 @@ function FileRow({ item, starred, isTrash, canEdit, onOpen, onStar, onShare, onR
     <div className="file-row">
       <div className="name-cell" onClick={onOpen}>
         <div className={`file-symbol ${color}`}><ItemIcon kind={kind} /></div>
-        <strong>{item.name}</strong>
+        <HoverPreview item={item} />
         {starred && <Star size={13} className="star-filled" fill="currentColor" />}
         {item.shared && <Share2 size={12} className="shared-icon" />}
       </div>
-      <div className="owner-cell"><span className="avatar avatar-tiny">{item.shared ? 'SH' : 'YO'}</span>{item.shared ? `Shared · ${item.sharedRole === 'editor' ? 'Editor' : 'Viewer'}` : 'You'}</div>
+      <div className="owner-cell" title={ownerProfile?.full_name || ownerProfile?.email || 'You'}><span className="avatar avatar-tiny">{ownerProfile?.avatar_url ? <img src={ownerProfile.avatar_url} alt="" /> : (ownerProfile?.full_name || ownerProfile?.email || 'You').slice(0, 2).toUpperCase()}</span>{isOwner ? 'You' : `${ownerProfile?.full_name || ownerProfile?.email || 'Shared'} · ${item.sharedRole === 'editor' ? 'Editor' : 'Viewer'}`}</div>
       <span className="muted-cell">{formatRelativeTime(item.updatedAt)}</span>
       <span className="muted-cell">{item.kind === 'folder' ? '—' : formatBytes(item.sizeBytes ?? 0)}</span>
       <div className="row-actions">
@@ -487,9 +493,9 @@ function FileRow({ item, starred, isTrash, canEdit, onOpen, onStar, onShare, onR
           <>
             <button title="Star" onClick={onStar}><Star size={15} fill={starred ? 'currentColor' : 'none'} /></button>
             {item.kind === 'file' && <button title="Download" onClick={onDownload}><Download size={15} /></button>}
-            {canEdit && <button title="Rename" onClick={onRename}><Pencil size={15} /></button>}
-            {!item.shared && <button title="Share" onClick={onShare}><Share2 size={15} /></button>}
-            {canEdit && <button title="Move to trash" onClick={onDelete}><Trash2 size={15} /></button>}
+            {(isOwner || canEdit) && <button title="Rename" onClick={onRename}><Pencil size={15} /></button>}
+            {isOwner && <button title="Share" onClick={onShare}><Share2 size={15} /></button>}
+            {(isOwner || canEdit) && <button title="Move to trash" onClick={onDelete}><Trash2 size={15} /></button>}
           </>
         )}
       </div>
@@ -497,8 +503,8 @@ function FileRow({ item, starred, isTrash, canEdit, onOpen, onStar, onShare, onR
   );
 }
 
-function FileCard({ item, starred, isTrash, onOpen, onStar, onShare, onDownload, onDelete, onRestore }: {
-  item: UnifiedItem; starred: boolean; isTrash: boolean;
+function FileCard({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpen, onStar, onDownload, onShare, onDelete, onRestore }: {
+  item: UnifiedItem; starred: boolean; isTrash: boolean; canEdit: boolean; isOwner: boolean; ownerProfile?: { full_name: string; email: string; avatar_url: string | null };
   onOpen: () => void; onStar: () => void; onShare: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void;
 }) {
   const kind = item.kind === 'folder' ? 'folder' : fileKindFromMime(item.mimeType ?? '', item.name);
@@ -509,13 +515,14 @@ function FileCard({ item, starred, isTrash, onOpen, onStar, onShare, onDownload,
         <div className={`file-symbol large ${color}`}><ItemIcon kind={kind} /></div>
         {!isTrash && <button onClick={(e) => { e.stopPropagation(); onStar(); }}><Star size={16} fill={starred ? 'currentColor' : 'none'} /></button>}
       </div>
-      <strong>{item.name}</strong>
+      <HoverPreview item={item} />
+      <div className="card-owner" title={ownerProfile?.full_name || ownerProfile?.email || 'You'}><span className="avatar avatar-tiny">{ownerProfile?.avatar_url ? <img src={ownerProfile.avatar_url} alt="" /> : (ownerProfile?.full_name || ownerProfile?.email || 'You').slice(0, 2).toUpperCase()}</span><span>{ownerProfile?.full_name || 'You'}</span></div>
       <span>{formatRelativeTime(item.updatedAt)} · {item.kind === 'folder' ? 'Folder' : formatBytes(item.sizeBytes ?? 0)}</span>
       {!isTrash ? (
         <div className="card-actions">
           {item.kind === 'file' && <button className="card-action" onClick={(e) => { e.stopPropagation(); onDownload(); }}><Download size={14} /></button>}
-          <button className="card-action" onClick={(e) => { e.stopPropagation(); onShare(); }}><Share2 size={14} /></button>
-          <button className="card-action" onClick={(e) => { e.stopPropagation(); onDelete(); }}><Trash2 size={14} /></button>
+          {isOwner && <button className="card-action" onClick={(e) => { e.stopPropagation(); onShare(); }}><Share2 size={14} /></button>}
+          {(isOwner || canEdit) && <button className="card-action" onClick={(e) => { e.stopPropagation(); onDelete(); }}><Trash2 size={14} /></button>}
         </div>
       ) : (
         <div className="card-actions">
@@ -529,7 +536,43 @@ function FileCard({ item, starred, isTrash, onOpen, onStar, onShare, onDownload,
 function ItemIcon({ kind }: { kind: string }) {
   if (kind === 'folder') return <Folder size={19} fill="currentColor" strokeWidth={2.1} />;
   if (kind === 'image') return <FileImage size={19} strokeWidth={2.1} />;
+  if (kind === 'pdf') return <FileText size={19} strokeWidth={2.1} />;
+  if (kind === 'spreadsheet') return <FileSpreadsheet size={19} strokeWidth={2.1} />;
+  if (kind === 'video') return <FileVideo size={19} strokeWidth={2.1} />;
+  if (kind === 'audio') return <FileAudio size={19} strokeWidth={2.1} />;
+  if (kind === 'archive') return <Archive size={19} strokeWidth={2.1} />;
+  if (kind === 'code') return <FileCode2 size={19} strokeWidth={2.1} />;
   return <File size={19} strokeWidth={2.1} />;
+}
+
+function HoverPreview({ item }: { item: UnifiedItem }) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  const kind = fileKindFromMime(item.mimeType ?? '', item.name);
+  const isOffice = /\.(docx?|xlsx?|pptx?)$/i.test(item.name);
+
+  useEffect(() => {
+    if (!open || item.kind !== 'file' || !item.storageKey) return;
+    supabase.storage.from('drive-files').createSignedUrl(item.storageKey, 300).then(({ data }) => setUrl(data?.signedUrl ?? null));
+  }, [open, item.kind, item.storageKey]);
+
+  if (item.kind !== 'file') return <strong className="file-name-trigger">{item.name}</strong>;
+  return (
+    <span className="hover-preview-trigger" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <strong className="file-name-trigger">{item.name}</strong>
+      {open && <span className="hover-preview-card">
+        <strong>{item.name}</strong>
+        <span className="hover-preview-media">
+          {url && kind === 'image' && <img src={url} alt="" />}
+          {url && kind === 'pdf' && <iframe src={`${url}#toolbar=0`} title="PDF preview" />}
+          {url && kind === 'video' && <video src={url} muted autoPlay playsInline />}
+          {url && kind === 'audio' && <audio src={url} controls />}
+          {url && kind === 'document' && (isOffice || item.mimeType?.startsWith('text/')) && <iframe src={isOffice ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}` : url} title="Document preview" />}
+          {!url && <span>Loading preview...</span>}
+        </span>
+      </span>}
+    </span>
+  );
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {

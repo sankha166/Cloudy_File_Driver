@@ -6,6 +6,9 @@ import { supabase } from '@/lib/supabase';
 
 type PublicLink = { resource_type: 'file' | 'folder'; resource_id: string; expires_at: string | null; password_protected: boolean };
 
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
 export function PublicSharePage({ token }: { token: string }) {
   const [item, setItem] = useState<UnifiedItem | null>(null);
   const [url, setUrl] = useState<string | null>(null);
@@ -55,7 +58,7 @@ export function PublicSharePage({ token }: { token: string }) {
     }
   };
 
-  const loadSharedItem = async (linkShare: PublicLink) => {
+  const loadSharedItem = async (linkShare: PublicLink, password?: string) => {
     try {
       let itemData: UnifiedItem | null = null;
 
@@ -88,12 +91,18 @@ export function PublicSharePage({ token }: { token: string }) {
           ownerId: fileRow.owner_id,
         };
 
-        if (fileRow.storage_key) {
-          const { data, error } = await supabase.storage
-            .from('drive-files')
-            .createSignedUrl(fileRow.storage_key, 3600);
-          if (!error && data) setUrl(data.signedUrl);
+        const params = new URLSearchParams({ token });
+        if (password) params.set('password', password);
+        const shareResponse = await fetch(`${supabaseUrl}/functions/v1/download-share?${params.toString()}`, {
+          headers: { apikey: supabaseAnonKey },
+        });
+        const shareData = await shareResponse.json() as { download_url?: string; error?: string; requires_password?: boolean };
+        if (!shareResponse.ok || !shareData.download_url) {
+          setError(shareData.requires_password ? 'Enter the link password to continue.' : shareData.error || 'Could not load the shared file.');
+          setLoading(false);
+          return;
         }
+        setUrl(shareData.download_url);
       } else if (linkShare.resource_type === 'folder') {
         const { data: folderRow, error: folderError } = await supabase
           .from('folders')
@@ -164,7 +173,7 @@ export function PublicSharePage({ token }: { token: string }) {
       }
 
       setAccessGranted(true);
-      await loadSharedItem(linkShare);
+      await loadSharedItem(linkShare, passwordInput);
     } catch {
       setPasswordError('Failed to verify password.');
     }

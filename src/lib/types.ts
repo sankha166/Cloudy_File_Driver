@@ -1,5 +1,5 @@
 export type ResourceKind = 'file' | 'folder';
-export type FileKind = 'folder' | 'pdf' | 'image' | 'spreadsheet' | 'document' | 'archive' | 'other';
+export type FileKind = 'folder' | 'pdf' | 'image' | 'spreadsheet' | 'document' | 'video' | 'audio' | 'code' | 'archive' | 'other';
 
 export interface Profile {
   id: string;
@@ -88,6 +88,12 @@ export interface UnifiedItem {
   ownerId: string;
 }
 
+export interface OwnerProfile {
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
+}
+
 export interface Breadcrumb {
   id: string | null;
   name: string;
@@ -97,6 +103,9 @@ export function fileKindFromMime(mime: string, name: string): FileKind {
   if (mime.includes('image/')) return 'image';
   if (mime === 'application/pdf' || name.toLowerCase().endsWith('.pdf')) return 'pdf';
   if (mime.includes('spreadsheet') || name.match(/\.(xlsx|xls|csv)$/i)) return 'spreadsheet';
+  if (mime.startsWith('video/') || name.match(/\.(mp4|webm|ogg|mov|avi|mkv)$/i)) return 'video';
+  if (mime.startsWith('audio/') || name.match(/\.(mp3|wav|m4a|aac|flac)$/i)) return 'audio';
+  if (mime.includes('javascript') || mime.includes('typescript') || mime.includes('html') || mime.includes('css') || name.match(/\.(js|jsx|ts|tsx|html|css|py|java|c|cpp|sql|sh)$/i)) return 'code';
   if (mime.includes('word') || mime.includes('presentation') || name.match(/\.(docx?|pptx?|key|pages|txt|md|json|rtf)$/i)) return 'document';
   if (mime.includes('zip') || mime.includes('compressed') || name.match(/\.(zip|rar|7z|tar|gz)$/i)) return 'archive';
   return 'other';
@@ -131,6 +140,9 @@ export function fileColorFromKind(kind: FileKind): string {
     spreadsheet: 'green',
     document: 'violet',
     archive: 'orange',
+    video: 'sky',
+    audio: 'peach',
+    code: 'slate',
     other: 'slate',
   };
   return map[kind] ?? 'slate';

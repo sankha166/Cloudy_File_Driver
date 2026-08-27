@@ -1,0 +1,2 @@
+-- Remote migration marker. This version is already applied to the linked project.
+-- Keep this file to preserve local and remote migration history alignment.
