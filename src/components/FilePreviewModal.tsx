@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Clock3, Download, Expand, FileImage, FileText, Loader2, Trash2, X } from 'lucide-react';
+import { Clock3, Download, Expand, FileImage, FileText, Loader2, Sparkles, Trash2, X } from 'lucide-react';
 import type { UnifiedItem } from '@/lib/types';
 import { fileKindFromMime, formatBytes, formatRelativeTime } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
@@ -14,6 +14,9 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const [summary, setSummary] = useState('');
+  const [summaryError, setSummaryError] = useState('');
+  const [summarizing, setSummarizing] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const kind = fileKindFromMime(item.mimeType ?? '', item.name);
   const isImage = kind === 'image';
@@ -42,11 +45,30 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
     else await previewRef.current.requestFullscreen();
   };
 
+  const handleSummarize = async () => {
+    setSummarizing(true);
+    setSummaryError('');
+    try {
+      const { data, error } = await supabase.functions.invoke('summarize-file', { body: { fileId: item.id } });
+      if (error) {
+        const response = 'context' in error && error.context instanceof Response ? await error.context.json().catch(() => null) : null;
+        throw new Error(response?.error || error.message || 'The AI summary service is unavailable.');
+      }
+      if (!data?.summary) throw new Error(data?.error || 'No summary was returned.');
+      setSummary(data.summary);
+    } catch (error) {
+      setSummaryError(error instanceof Error ? error.message : 'Could not summarize this file.');
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal modal-preview" onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-title"><h2 className="preview-title">{item.name}</h2><div className="preview-title-actions"><button onClick={handleFullscreen} title="Full screen"><Expand size={17} /></button><button onClick={onClose} title="Close"><X size={18} /></button></div></div>
-        <div className="preview-body" ref={previewRef}>
+        <div className="preview-scroll-area">
+          <div className="preview-body" ref={previewRef}>
           {loading ? (
             <div className="preview-loading"><Loader2 size={28} className="spin" /></div>
           ) : previewError ? (
@@ -73,13 +95,17 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
           ) : (
             <div className="preview-fallback"><FileImage size={48} /><p>{kind === 'pdf' ? 'PDF document' : kind === 'document' ? 'Document' : kind === 'spreadsheet' ? 'Spreadsheet' : 'File preview'}</p><span>{formatBytes(item.sizeBytes ?? 0)}</span></div>
           )}
-        </div>
-        <div className="preview-meta">
+          </div>
+          <div className="preview-meta">
           <div className="preview-info"><Clock3 size={14} /> Modified {formatRelativeTime(item.updatedAt)}</div>
           <div className="preview-info"><FileText size={14} /> {formatBytes(item.sizeBytes ?? 0)}</div>
+          </div>
+          {summary && <div className="ai-summary"><div className="ai-summary-heading"><Sparkles size={16} /><strong>AI summary</strong></div><p>{summary}</p></div>}
+          {summaryError && <p className="form-error">{summaryError}</p>}
         </div>
         <div className="preview-actions">
           <button className="danger-button" onClick={onDelete}><Trash2 size={15} /> Move to trash</button>
+          <button className="outline-button" onClick={handleSummarize} disabled={summarizing}>{summarizing ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />} {summary ? 'Regenerate summary' : 'Summarize with AI'}</button>
           <button className="primary-button" onClick={handleDownload} disabled={downloading}>{downloading ? <Loader2 size={15} className="spin" /> : <Download size={15} />} Download</button>
         </div>
       </div>
