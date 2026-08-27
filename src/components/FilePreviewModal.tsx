@@ -18,6 +18,7 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
   const isImage = kind === 'image';
   const isPdf = kind === 'pdf';
   const isText = kind === 'document';
+  const isOfficeDocument = /\.(docx?|xlsx?|pptx?)$/i.test(item.name);
 
   useEffect(() => {
     if (!item.storageKey) { setLoading(false); return; }
@@ -53,7 +54,7 @@ export function FilePreviewModal({ item, onClose, onDownload, onDelete }: {
             />
           ) : isText && url ? (
             <iframe
-              src={url}
+              src={isOfficeDocument ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}` : url}
               className="preview-text"
               title="Document Preview"
               sandbox="allow-same-origin"

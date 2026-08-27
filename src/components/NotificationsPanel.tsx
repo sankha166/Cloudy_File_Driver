@@ -34,11 +34,13 @@ export function NotificationsPanel({
         .limit(20);
 
       if (queryError) throw queryError;
-      setNotifications(data ?? []);
+      const { data: shares, error: sharesError } = await supabase.from('shares').select('*').eq('grantee_user_id', userId).order('created_at', { ascending: false }).limit(20);
+      if (sharesError) throw sharesError;
+      const shareNotifications = (shares ?? []).map((share) => ({ id: `share-${share.id}`, actor_id: share.created_by, action: `share_${share.resource_type}`, resource_type: share.resource_type, resource_id: share.resource_id, context: { name: `Resource shared with you (${share.role})` }, created_at: share.created_at } as ActivityRow));
+      setNotifications([...(data ?? []), ...shareNotifications].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 20));
       setError('');
-    } catch (err) {
+    } catch {
       setError('Could not load notifications');
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -48,12 +50,10 @@ export function NotificationsPanel({
     if (!userId || notifications.length === 0) return;
     try {
       await Promise.all(
-        notifications.map(n =>
-          supabase.from('activities').delete().eq('id', n.id)
-        )
+        notifications.filter((n) => !n.id.startsWith('share-')).map(n => supabase.from('activities').delete().eq('id', n.id))
       );
       setNotifications([]);
-    } catch (err) {
+    } catch {
       setError('Could not clear notifications');
     }
   };
@@ -114,8 +114,8 @@ export function NotificationsPanel({
                 <div className="notification-content">
                   <p>
                     <strong>{getActionLabel(notif.action)}</strong>
-                    {notif.context?.name && (
-                      <>: <span className="notification-name">{notif.context.name as string}</span></>
+                    {typeof notif.context?.name === 'string' && (
+                      <>: <span className="notification-name">{String(notif.context.name)}</span></>
                     )}
                   </p>
                   <span className="notification-time">{formatRelativeTime(notif.created_at)}</span>
@@ -123,7 +123,7 @@ export function NotificationsPanel({
                 <button
                   className="notification-remove"
                   onClick={async () => {
-                    await supabase.from('activities').delete().eq('id', notif.id);
+                    if (!notif.id.startsWith('share-')) await supabase.from('activities').delete().eq('id', notif.id);
                     setNotifications(notifications.filter(n => n.id !== notif.id));
                   }}
                   title="Dismiss"

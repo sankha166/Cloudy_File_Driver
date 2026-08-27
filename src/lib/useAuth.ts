@@ -93,6 +93,8 @@ export function useAuth() {
 
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
     if (!session?.user) throw new Error('Not signed in.');
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email: session.user.email ?? '', password: currentPassword });
+    if (signInError) throw new Error('Current password is incorrect.');
     const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
     if (updateError) throw new Error('Could not change password: ' + updateError.message);
   }, [session]);
@@ -100,7 +102,7 @@ export function useAuth() {
   const updateAvatar = useCallback(async (file: File) => {
     if (!session?.user) throw new Error('Not signed in.');
     const fileExt = file.name.split('.').pop();
-    const fileName = `${session.user.id}-${Date.now()}.${fileExt}`;
+    const fileName = `${session.user.id}/${Date.now()}.${fileExt}`;
     const { error: uploadError } = await supabase.storage
       .from('avatars')
       .upload(fileName, file, { upsert: true });

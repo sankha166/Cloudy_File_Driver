@@ -19,7 +19,6 @@ export function ProfileSettingsModal({
 }) {
   const [activeTab, setActiveTab] = useState<'basic' | 'password' | 'avatar'>('basic');
   const [fullName, setFullName] = useState(profile?.full_name || '');
-  const [email, setEmail] = useState(profile?.email || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -162,7 +161,7 @@ export function ProfileSettingsModal({
                 <span>Email Address</span>
                 <input
                   type="email"
-                  value={email}
+                  value={profile?.email || ''}
                   disabled
                   className="disabled"
                   title="Email cannot be changed"
@@ -249,6 +248,8 @@ export function ProfileSettingsModal({
               <div className="avatar-preview-box">
                 {avatarPreview ? (
                   <img src={avatarPreview} alt="Avatar preview" className="avatar-preview-img" />
+                ) : profile?.avatar_color?.startsWith('http') ? (
+                  <img src={profile.avatar_color} alt="Current avatar" className="avatar-preview-img" />
                 ) : (
                   <div className="avatar-preview-empty">
                     <span className="avatar avatar-large">{(profile?.full_name || profile?.email || 'U').slice(0, 2).toUpperCase()}</span>

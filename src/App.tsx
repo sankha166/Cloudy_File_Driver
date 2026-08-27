@@ -18,18 +18,9 @@ import { NotificationsPanel } from '@/components/NotificationsPanel';
 
 type View = 'My Drive' | 'Shared with me' | 'Recent' | 'Starred' | 'Trash';
 
-function App() {
+function DriveApp() {
   const { session, profile, loading: authLoading, signIn, signUp, signOut, updateProfile, changePassword, updateAvatar } = useAuth();
   
-  // Check if this is a public share link route
-  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
-  const publicShareMatch = pathname.match(/^\/s\/([a-zA-Z0-9-_]+)$/);
-  
-  if (publicShareMatch) {
-    const token = publicShareMatch[1];
-    return <PublicSharePage token={token} />;
-  }
-
   const [view, setView] = useState<View>('My Drive');
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -206,6 +197,7 @@ function App() {
 
   const storagePct = Math.min(100, (drive.storageUsedBytes / STORAGE_LIMIT_BYTES) * 100);
   const initials = (profile?.full_name || profile?.email || 'U').slice(0, 2).toUpperCase();
+  const avatar = profile?.avatar_color?.startsWith('http') ? profile.avatar_color : null;
 
   return (
     <div className="app-shell" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
@@ -243,7 +235,7 @@ function App() {
         <div className="sidebar-bottom">
           <button className="help-link"><ShieldCheck size={16} /> Your files are private</button>
           <button className="profile-mini" onClick={() => setMenuOpen((o) => !o)}>
-            <span className="avatar avatar-small">{initials}</span>
+            <span className="avatar avatar-small">{avatar ? <img src={avatar} alt="" /> : initials}</span>
             <span className="profile-copy"><strong>{profile?.full_name || 'Your account'}</strong><small>{profile?.email}</small></span>
             <MoreHorizontal size={17} />
           </button>
@@ -256,7 +248,7 @@ function App() {
           <div className="top-actions">
             <button className="icon-button" onClick={() => setNotificationsOpen((o) => !o)} title="Notifications"><Bell size={19} /></button>
             <button className="icon-button" onClick={() => setDarkMode(!darkMode)} title="Toggle dark mode">{darkMode ? <Sun size={19} /> : <Moon size={19} />}</button>
-            <button className="avatar avatar-header" onClick={() => setMenuOpen((o) => !o)}>{initials}</button>
+            <button className="avatar avatar-header" onClick={() => setMenuOpen((o) => !o)}>{avatar ? <img src={avatar} alt="Profile" /> : initials}</button>
             {notificationsOpen && (
               <NotificationsPanel userId={userId} onClose={() => setNotificationsOpen(false)} />
             )}
@@ -440,7 +432,7 @@ function App() {
         <ProfileSettingsModal
           profile={profile}
           onClose={() => setProfileSettingsOpen(false)}
-          onUpdateProfile={updateProfile}
+          onUpdateProfile={(fullName) => updateProfile({ full_name: fullName })}
           onChangePassword={changePassword}
           onUpdateAvatar={updateAvatar}
           busy={authBusy}
@@ -548,6 +540,12 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
       </div>
     </div>
   );
+}
+
+function App() {
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const publicShareMatch = pathname.match(/^\/s\/([a-zA-Z0-9-_]+)$/);
+  return publicShareMatch ? <PublicSharePage token={publicShareMatch[1]} /> : <DriveApp />;
 }
 
 export default App;

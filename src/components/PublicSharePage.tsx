@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Cloud, Download, FileImage, FileText, Loader2, Lock, Eye, EyeOff, X, File } from 'lucide-react';
+import { Cloud, Download, FileImage, FileText, Loader2, Lock, Eye, EyeOff, File } from 'lucide-react';
 import type { UnifiedItem } from '@/lib/types';
 import { fileKindFromMime, formatBytes, formatRelativeTime } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
+
+type PublicLink = { resource_type: 'file' | 'folder'; resource_id: string; expires_at: string | null; password_protected: boolean; password_hash: string | null };
 
 export function PublicSharePage({ token }: { token: string }) {
   const [item, setItem] = useState<UnifiedItem | null>(null);
@@ -15,6 +17,7 @@ export function PublicSharePage({ token }: { token: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [accessGranted, setAccessGranted] = useState(false);
+  const [folderItems, setFolderItems] = useState<UnifiedItem[]>([]);
 
   useEffect(() => {
     verifyAndLoadLink();
@@ -22,11 +25,10 @@ export function PublicSharePage({ token }: { token: string }) {
 
   const verifyAndLoadLink = async () => {
     try {
-      const { data: linkShare, error: linkError } = await supabase
-        .from('link_shares')
-        .select('*')
-        .eq('token', token)
+      const { data: linkShareData, error: linkError } = await supabase
+        .rpc('resolve_link_share', { p_token: token })
         .maybeSingle();
+      const linkShare = linkShareData as PublicLink | null;
 
       if (linkError || !linkShare) {
         setError('Share link not found or has expired.');
@@ -40,20 +42,20 @@ export function PublicSharePage({ token }: { token: string }) {
         return;
       }
 
-      if (linkShare.password_hash) {
+      if (linkShare.password_protected) {
         setPasswordProtected(true);
         setLoading(false);
         return;
       }
 
       await loadSharedItem(linkShare);
-    } catch (err) {
+    } catch {
       setError('Failed to load shared item.');
       setLoading(false);
     }
   };
 
-  const loadSharedItem = async (linkShare: any) => {
+  const loadSharedItem = async (linkShare: PublicLink) => {
     try {
       let itemData: UnifiedItem | null = null;
 
@@ -117,13 +119,21 @@ export function PublicSharePage({ token }: { token: string }) {
           shared: true,
           ownerId: folderRow.owner_id,
         };
+        const [{ data: files }, { data: folders }] = await Promise.all([
+          supabase.from('files').select('*').eq('folder_id', folderRow.id).eq('is_deleted', false),
+          supabase.from('folders').select('*').eq('parent_id', folderRow.id).eq('is_deleted', false),
+        ]);
+        setFolderItems([
+          ...(folders ?? []).map((folder) => ({ id: folder.id, kind: 'folder' as const, name: folder.name, parentId: folder.parent_id, isDeleted: folder.is_deleted, createdAt: folder.created_at, updatedAt: folder.updated_at, starred: false, shared: true, ownerId: folder.owner_id })),
+          ...(files ?? []).map((file) => ({ id: file.id, kind: 'file' as const, name: file.name, parentId: file.folder_id, mimeType: file.mime_type, sizeBytes: file.size_bytes, storageKey: file.storage_key, isDeleted: file.is_deleted, createdAt: file.created_at, updatedAt: file.updated_at, starred: false, shared: true, ownerId: file.owner_id })),
+        ]);
       }
 
       if (itemData) {
         setItem(itemData);
         setAccessGranted(true);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load shared item.');
     } finally {
       setLoading(false);
@@ -135,11 +145,10 @@ export function PublicSharePage({ token }: { token: string }) {
     setPasswordError('');
 
     try {
-      const { data: linkShare, error: linkError } = await supabase
-        .from('link_shares')
-        .select('password_hash')
-        .eq('token', token)
+      const { data: linkShareData, error: linkError } = await supabase
+        .rpc('resolve_link_share', { p_token: token })
         .maybeSingle();
+      const linkShare = linkShareData as PublicLink | null;
 
       if (linkError || !linkShare) {
         setPasswordError('Link not found.');
@@ -147,23 +156,15 @@ export function PublicSharePage({ token }: { token: string }) {
       }
 
       // Simple password verification (server should handle this)
-      const passwordMatch = await verifyPassword(passwordInput, linkShare.password_hash);
+      const passwordMatch = linkShare.password_hash ? await verifyPassword(passwordInput, linkShare.password_hash) : false;
       if (!passwordMatch) {
         setPasswordError('Incorrect password.');
         return;
       }
 
       setAccessGranted(true);
-      const { data: fullLink } = await supabase
-        .from('link_shares')
-        .select('*')
-        .eq('token', token)
-        .maybeSingle();
-
-      if (fullLink) {
-        await loadSharedItem(fullLink);
-      }
-    } catch (err) {
+      await loadSharedItem(linkShare);
+    } catch {
       setPasswordError('Failed to verify password.');
     }
   };
@@ -191,7 +192,7 @@ export function PublicSharePage({ token }: { token: string }) {
       a.download = item.name;
       a.click();
       window.URL.revokeObjectURL(downloadUrl);
-    } catch (err) {
+    } catch {
       setError('Download failed.');
     } finally {
       setDownloading(false);
@@ -277,9 +278,9 @@ export function PublicSharePage({ token }: { token: string }) {
                 )}
               </>
             ) : (
-              <div className="preview-fallback">
-                <FileImage size={48} />
-                <p>Folder: {item.name}</p>
+              <div className="public-folder-list">
+                <div className="preview-fallback"><FileImage size={48} /><p>Folder: {item.name}</p></div>
+                {folderItems.length > 0 && <div className="public-folder-items">{folderItems.map((child) => <div key={`${child.kind}-${child.id}`} className="public-folder-item"><FileText size={16} /><span>{child.name}</span><small>{child.kind === 'file' ? formatBytes(child.sizeBytes ?? 0) : 'Folder'}</small></div>)}</div>}
               </div>
             )}
           </div>
