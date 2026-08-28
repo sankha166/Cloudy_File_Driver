@@ -232,7 +232,7 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
     await refresh();
   }, [userId, currentFolderId, refresh]);
 
-  const uploadFiles = useCallback(async (files: File[], onProgress?: (fileName: string, percent: number) => void): Promise<void> => {
+  const uploadFiles = useCallback(async (files: File[], onProgress?: (fileName: string, percent: number) => void, targetFolderId = currentFolderId): Promise<void> => {
     if (!userId) throw new Error('You need to be signed in.');
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) throw new Error(`${file.name} exceeds the 100 MB limit.`);
@@ -252,7 +252,7 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
       onProgress?.(file.name, 70);
       const { data: fileRec, error: fileError } = await supabase.from('files').insert({
         owner_id: userId,
-        folder_id: currentFolderId,
+        folder_id: targetFolderId,
         name: file.name,
         mime_type: file.type || 'application/octet-stream',
         size_bytes: file.size,

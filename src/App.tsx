@@ -15,6 +15,7 @@ import { FilePreviewModal } from '@/components/FilePreviewModal';
 import { PublicSharePage } from '@/components/PublicSharePage';
 import { ProfileSettingsModal } from '@/components/ProfileSettingsModal';
 import { NotificationsPanel } from '@/components/NotificationsPanel';
+import { MobileCaptureModal, type CaptureFolder } from '@/components/MobileCaptureModal';
 import { supabase } from '@/lib/supabase';
 
 type View = 'My Drive' | 'Shared with me' | 'Recent' | 'Starred' | 'Trash';
@@ -47,9 +48,11 @@ function DriveApp() {
   const [authBusy, setAuthBusy] = useState(false);
   const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureFolders, setCaptureFolders] = useState<CaptureFolder[]>([]);
+  const [captureFoldersLoading, setCaptureFoldersLoading] = useState(false);
   const [darkMode, setDarkMode] = useState(localStorage.getItem('darkMode') === 'true');
   const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
 
   const userId = session?.user?.id;
   const drive = useDrive(userId, currentFolderId, view);
@@ -131,6 +134,21 @@ function DriveApp() {
     }
   };
 
+  const handleCapturedFiles = async (files: File[], folderId: string | null) => {
+    setUploads(files.map((file) => ({ name: file.name, percent: 0 })));
+    try {
+      await drive.uploadFiles(files, (fileName, percent) => {
+        setUploads((prev) => prev.map((upload) => upload.name === fileName ? { ...upload, percent } : upload));
+      }, folderId);
+      setView('My Drive');
+      showNotice(`${files.length} scanned ${files.length === 1 ? 'page' : 'pages'} saved.`);
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Could not save captured pages.', 'error');
+    } finally {
+      setTimeout(() => setUploads([]), 1500);
+    }
+  };
+
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files);
@@ -204,6 +222,14 @@ function DriveApp() {
     setFolders(data ?? []);
   };
 
+  const loadCaptureFolders = useCallback(async () => {
+    if (!userId) return;
+    setCaptureFoldersLoading(true);
+    const { data } = await supabase.from('folders').select('id, name, parent_id').eq('owner_id', userId).eq('is_deleted', false).order('name');
+    setCaptureFoldersLoading(false);
+    setCaptureFolders(data ?? []);
+  }, [userId]);
+
   const handleMove = async (folderId: string | null) => {
     if (!moveTarget) return;
     try {
@@ -249,7 +275,6 @@ function DriveApp() {
           )}
         </div>
         <input ref={fileRef} type="file" multiple hidden onChange={handleFiles} />
-        <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={handleFiles} />
         <nav className="side-nav" aria-label="Main navigation">
           <p className="nav-label">Workspace</p>
           {(['My Drive', 'Shared with me', 'Recent', 'Starred', 'Trash'] as View[]).map((navView) => (
@@ -284,6 +309,7 @@ function DriveApp() {
           <div className="mobile-header-row">
             <button className="mobile-menu-button" onClick={() => setMobileMenuOpen((open) => !open)} title="Open navigation"><Menu size={22} /></button>
             <div className="mobile-brand"><span className="brand-mark"><Cloud size={17} strokeWidth={2.7} /></span><strong>Cloudly</strong></div>
+            <button className="mobile-theme-button" onClick={() => setDarkMode(!darkMode)} title="Toggle light and dark mode">{darkMode ? <Sun size={19} /> : <Moon size={19} />}</button>
             <button className="avatar avatar-header mobile-profile-button" onClick={() => setMenuOpen((o) => !o)}>{avatar ? <img src={avatar} alt="Profile" /> : initials}</button>
           </div>
           <div className="search-wrap"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search files and folders" /></div>
@@ -294,16 +320,16 @@ function DriveApp() {
             {notificationsOpen && (
               <NotificationsPanel userId={userId} onClose={() => setNotificationsOpen(false)} />
             )}
-            {menuOpen && (
-              <div className="account-menu">
-                <strong>{profile?.full_name || 'Your account'}</strong>
-                <span>{profile?.email}</span>
-                <hr />
-                <button onClick={() => { setMenuOpen(false); setProfileSettingsOpen(true); }}><Settings size={15} /> Profile Settings</button>
-                <button onClick={signOut}><LogOut size={15} /> Sign out</button>
-              </div>
-            )}
           </div>
+          {menuOpen && (
+            <div className="account-menu">
+              <strong>{profile?.full_name || 'Your account'}</strong>
+              <span>{profile?.email}</span>
+              <hr />
+              <button onClick={() => { setMenuOpen(false); setProfileSettingsOpen(true); }}><Settings size={15} /> Profile Settings</button>
+              <button onClick={signOut}><LogOut size={15} /> Sign out</button>
+            </div>
+          )}
           {mobileMenuOpen && (
             <div className="mobile-nav-drawer">
               <button onClick={() => { setMobileMenuOpen(false); setNotificationsOpen(true); }}><Bell size={17} /> Notifications</button>
@@ -422,7 +448,7 @@ function DriveApp() {
             </div>
           )}
 
-          {view !== 'Trash' && <button className="camera-upload-button" onClick={() => cameraRef.current?.click()} title="Capture and upload a photo"><Camera size={22} /></button>}
+          {view !== 'Trash' && <button className="camera-upload-button" onClick={() => setCaptureOpen(true)} title="Capture and upload a photo"><Camera size={22} /></button>}
 
           {uploads.length > 0 && (
             <div className="upload-tray">
@@ -440,6 +466,8 @@ function DriveApp() {
       </main>
 
       {notice && <div className={`toast ${noticeType === 'error' ? 'toast-error' : ''}`}><span className="toast-check">{noticeType === 'error' ? <X size={14} /> : <Check size={14} />}</span>{notice}</div>}
+
+      {captureOpen && <MobileCaptureModal folders={captureFolders} loadingFolders={captureFoldersLoading} onLoadFolders={loadCaptureFolders} onUpload={handleCapturedFiles} onClose={() => setCaptureOpen(false)} />}
 
       {actionItem && (
         <div className="action-sheet-backdrop" onMouseDown={() => setActionItem(null)}>
