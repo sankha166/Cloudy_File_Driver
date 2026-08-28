@@ -837,6 +837,10 @@ body {
   .capture-thumbnails span { position: absolute; left: 4px; bottom: 4px; min-width: 18px; padding: 1px 4px; border-radius: 8px; background: rgba(17,21,42,.78); color: white; font-size: 10px; }
   .capture-thumbnails i { position: absolute; top: -7px; right: -7px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--danger); color: white; font-style: normal; }
   .capture-add-page { width: 100%; margin-bottom: 14px; color: var(--primary); background: var(--primary-50); border-color: transparent; }
+  .capture-format { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; color: var(--text-muted); font-size: 12px; }
+  .capture-format span { margin-right: auto; font-weight: 600; }
+  .capture-format button { min-height: 34px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text-soft); font-size: 11px; cursor: pointer; }
+  .capture-format button.active { border-color: var(--primary); background: var(--primary-50); color: var(--primary); font-weight: 700; }
   .capture-destination { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 11px; color: var(--text-soft); font-size: 13px; }
   .capture-destination span { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
   .capture-destination select { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; text-align: right; }
