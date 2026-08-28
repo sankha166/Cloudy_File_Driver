@@ -76,6 +76,7 @@ export function useAuth() {
         avatar_color: '#315CFF',
       });
     }
+    return !data.session;
   }, []);
 
   const signOut = useCallback(async () => {

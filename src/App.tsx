@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import {
-  ArrowDown, ArrowUp, Bell, Check, ChevronDown, ChevronRight, Clock3, Cloud, CloudUpload,
+  ArrowDown, ArrowUp, Bell, Camera, Check, ChevronDown, ChevronRight, Clock3, Cloud, CloudOff, CloudUpload,
   Archive, Download, File, FileAudio, FileCode2, FileImage, FileSpreadsheet, FileText, FileVideo, Folder, FolderOpen, Grid2X2, List, Loader2, LogOut, MoreHorizontal,
-  Pencil, Plus, Search, Share2, ShieldCheck, Star, Trash2, Upload, UserPlus, X, RotateCcw, Settings, Moon, Sun,
+  HardDrive, HelpCircle, Menu, Pencil, Plus, Search, Share2, ShieldAlert, ShieldCheck, Star, Trash2, Upload, UserPlus, X, RotateCcw, Settings, Moon, Sun,
 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { useDrive, STORAGE_LIMIT_BYTES } from '@/lib/useDrive';
@@ -28,6 +28,11 @@ function DriveApp() {
   const [sortAsc, setSortAsc] = useState(true);
   const [layout, setLayout] = useState<'list' | 'grid'>('list');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [actionItem, setActionItem] = useState<UnifiedItem | null>(null);
+  const [moveTarget, setMoveTarget] = useState<UnifiedItem | null>(null);
+  const [folders, setFolders] = useState<{ id: string; name: string; parent_id: string | null }[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(false);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [folderName, setFolderName] = useState('');
@@ -44,6 +49,7 @@ function DriveApp() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(localStorage.getItem('darkMode') === 'true');
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
 
   const userId = session?.user?.id;
   const drive = useDrive(userId, currentFolderId, view);
@@ -57,6 +63,9 @@ function DriveApp() {
   useEffect(() => {
     setMenuOpen(false);
     setNewMenuOpen(false);
+    setMobileMenuOpen(false);
+    setActionItem(null);
+    setMoveTarget(null);
   }, [view, currentFolderId]);
 
   useEffect(() => {
@@ -82,8 +91,9 @@ function DriveApp() {
   const handleAuth = async (email: string, password: string, name?: string) => {
     setAuthBusy(true);
     try {
-      if (name !== undefined) await signUp(email, password, name);
-      else await signIn(email, password);
+      if (name !== undefined) return await signUp(email, password, name);
+      await signIn(email, password);
+      return false;
     } finally {
       setAuthBusy(false);
     }
@@ -180,6 +190,31 @@ function DriveApp() {
     try { await drive.deletePermanently(item); showNotice('Deleted permanently.'); } catch (err) { showNotice(err instanceof Error ? err.message : 'Could not delete.', 'error'); }
   };
 
+  const openMovePicker = async (item: UnifiedItem) => {
+    setActionItem(null);
+    setMoveTarget(item);
+    setFoldersLoading(true);
+    const { data, error } = await supabase.from('folders').select('id, name, parent_id').eq('owner_id', userId).eq('is_deleted', false).order('name');
+    setFoldersLoading(false);
+    if (error) {
+      setMoveTarget(null);
+      showNotice('Could not load folders.', 'error');
+      return;
+    }
+    setFolders(data ?? []);
+  };
+
+  const handleMove = async (folderId: string | null) => {
+    if (!moveTarget) return;
+    try {
+      await drive.moveItem(moveTarget, folderId);
+      setMoveTarget(null);
+      showNotice('Item moved.');
+    } catch (err) {
+      showNotice(err instanceof Error ? err.message : 'Could not move item.', 'error');
+    }
+  };
+
   const navigateCrumb = (crumb: Breadcrumb) => {
     if (crumb.id === null) {
       setCurrentFolderId(null);
@@ -214,6 +249,7 @@ function DriveApp() {
           )}
         </div>
         <input ref={fileRef} type="file" multiple hidden onChange={handleFiles} />
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={handleFiles} />
         <nav className="side-nav" aria-label="Main navigation">
           <p className="nav-label">Workspace</p>
           {(['My Drive', 'Shared with me', 'Recent', 'Starred', 'Trash'] as View[]).map((navView) => (
@@ -245,6 +281,11 @@ function DriveApp() {
 
       <main className="main-content">
         <header className="topbar">
+          <div className="mobile-header-row">
+            <button className="mobile-menu-button" onClick={() => setMobileMenuOpen((open) => !open)} title="Open navigation"><Menu size={22} /></button>
+            <div className="mobile-brand"><span className="brand-mark"><Cloud size={17} strokeWidth={2.7} /></span><strong>Cloudly</strong></div>
+            <button className="avatar avatar-header mobile-profile-button" onClick={() => setMenuOpen((o) => !o)}>{avatar ? <img src={avatar} alt="Profile" /> : initials}</button>
+          </div>
           <div className="search-wrap"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search files and folders" /></div>
           <div className="top-actions">
             <button className="icon-button" onClick={() => setNotificationsOpen((o) => !o)} title="Notifications"><Bell size={19} /></button>
@@ -263,6 +304,14 @@ function DriveApp() {
               </div>
             )}
           </div>
+          {mobileMenuOpen && (
+            <div className="mobile-nav-drawer">
+              <button onClick={() => { setMobileMenuOpen(false); setNotificationsOpen(true); }}><Bell size={17} /> Notifications</button>
+              <button onClick={() => { setMobileMenuOpen(false); showNotice('Spam controls are coming soon.'); }}><ShieldAlert size={17} /> Spam</button>
+              <button onClick={() => { setMobileMenuOpen(false); showNotice('Help center is coming soon.'); }}><HelpCircle size={17} /> Help and feedback</button>
+              <div className="mobile-storage-summary"><div><HardDrive size={17} /><span>Storage</span><strong>{storagePct.toFixed(0)}%</strong></div><div className="progress"><span style={{ width: `${storagePct}%` }} /></div><small>{formatBytes(drive.storageUsedBytes)} of {formatBytes(STORAGE_LIMIT_BYTES)} used</small></div>
+            </div>
+          )}
         </header>
 
         <div className="workspace">
@@ -338,6 +387,7 @@ function DriveApp() {
                   onDelete={() => handleDelete(item)}
                   onRestore={() => handleRestore(item)}
                   onPermanentDelete={() => handlePermanentDelete(item)}
+                  onMenu={() => setActionItem(item)}
                 />
               ))}
             </div>
@@ -358,6 +408,7 @@ function DriveApp() {
                   onDownload={() => handleDownload(item)}
                   onDelete={() => handleDelete(item)}
                   onRestore={() => handleRestore(item)}
+                  onMenu={() => setActionItem(item)}
                 />
               ))}
             </div>
@@ -370,6 +421,8 @@ function DriveApp() {
               <button>Browse files</button>
             </div>
           )}
+
+          {view !== 'Trash' && <button className="camera-upload-button" onClick={() => cameraRef.current?.click()} title="Capture and upload a photo"><Camera size={22} /></button>}
 
           {uploads.length > 0 && (
             <div className="upload-tray">
@@ -387,6 +440,37 @@ function DriveApp() {
       </main>
 
       {notice && <div className={`toast ${noticeType === 'error' ? 'toast-error' : ''}`}><span className="toast-check">{noticeType === 'error' ? <X size={14} /> : <Check size={14} />}</span>{notice}</div>}
+
+      {actionItem && (
+        <div className="action-sheet-backdrop" onMouseDown={() => setActionItem(null)}>
+          <div className="action-sheet" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="action-sheet-handle" />
+            <div className="action-sheet-title"><div className={`file-symbol ${fileColorFromKind(actionItem.kind === 'folder' ? 'folder' : fileKindFromMime(actionItem.mimeType ?? '', actionItem.name))}`}><ItemIcon kind={actionItem.kind === 'folder' ? 'folder' : fileKindFromMime(actionItem.mimeType ?? '', actionItem.name)} /></div><strong>{actionItem.name}</strong><button onClick={() => setActionItem(null)}><X size={18} /></button></div>
+            <div className="action-sheet-grid">
+              <button onClick={() => { setActionItem(null); openItem(actionItem); }}><FileText size={18} /> Open</button>
+              {!actionItem.shared && <button onClick={() => { setActionItem(null); setShareItem(actionItem); }}><Share2 size={18} /> Share</button>}
+              <button onClick={() => { setActionItem(null); drive.toggleStar(actionItem); }}><Star size={18} /> {drive.starredIds.has(actionItem.id) ? 'Remove star' : 'Add to starred'}</button>
+              {actionItem.kind === 'file' && <button onClick={() => { setActionItem(null); handleDownload(actionItem); }}><Download size={18} /> Download</button>}
+              {actionItem.kind === 'file' && <button onClick={() => { localStorage.setItem(`offline:${actionItem.id}`, 'true'); setActionItem(null); showNotice('Marked available offline.'); }}><CloudOff size={18} /> Available offline</button>}
+              <button onClick={() => openMovePicker(actionItem)}><Folder size={18} /> Move</button>
+              {(!actionItem.shared || actionItem.sharedRole === 'editor') && <button onClick={() => { setActionItem(null); setRenameItem(actionItem); setRenameValue(actionItem.name); }}><Pencil size={18} /> Rename</button>}
+              {(!actionItem.shared || actionItem.sharedRole === 'editor') && <button className="action-danger" onClick={() => { setActionItem(null); handleDelete(actionItem); }}><Trash2 size={18} /> Move to trash</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {moveTarget && (
+        <Modal title={`Move ${moveTarget.name}`} onClose={() => setMoveTarget(null)}>
+          <div className="move-picker">
+            <p>Choose a destination folder.</p>
+            {foldersLoading ? <div className="state-loading"><Loader2 size={22} className="spin" /></div> : <div className="folder-options">
+              <button onClick={() => handleMove(null)}><FolderOpen size={17} /> My Drive</button>
+              {folders.filter((folder) => folder.id !== moveTarget.id).map((folder) => <button key={folder.id} onClick={() => handleMove(folder.id)}><Folder size={17} /> {folder.name}</button>)}
+            </div>}
+          </div>
+        </Modal>
+      )}
 
       {newFolderOpen && (
         <Modal title="Create a new folder" onClose={() => { setNewFolderOpen(false); setFolderError(''); }}>
@@ -466,9 +550,9 @@ function EmptyState({ view, onUpload, onCreateFolder }: { view: string; onUpload
   );
 }
 
-function FileRow({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpen, onStar, onShare, onRename, onDownload, onDelete, onRestore, onPermanentDelete }: {
+function FileRow({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpen, onStar, onShare, onRename, onDownload, onDelete, onRestore, onPermanentDelete, onMenu }: {
   item: UnifiedItem; starred: boolean; isTrash: boolean; canEdit: boolean; isOwner: boolean; ownerProfile?: { full_name: string; email: string; avatar_url: string | null };
-  onOpen: () => void; onStar: () => void; onShare: () => void; onRename: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void; onPermanentDelete: () => void;
+  onOpen: () => void; onStar: () => void; onShare: () => void; onRename: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void; onPermanentDelete: () => void; onMenu: () => void;
 }) {
   const kind = item.kind === 'folder' ? 'folder' : fileKindFromMime(item.mimeType ?? '', item.name);
   const color = fileColorFromKind(kind);
@@ -499,13 +583,14 @@ function FileRow({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpe
           </>
         )}
       </div>
+      <button className="mobile-row-menu" onClick={(e) => { e.stopPropagation(); onMenu(); }} title={`Actions for ${item.name}`}><MoreHorizontal size={20} /></button>
     </div>
   );
 }
 
-function FileCard({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpen, onStar, onDownload, onShare, onDelete, onRestore }: {
+function FileCard({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpen, onStar, onDownload, onShare, onDelete, onRestore, onMenu }: {
   item: UnifiedItem; starred: boolean; isTrash: boolean; canEdit: boolean; isOwner: boolean; ownerProfile?: { full_name: string; email: string; avatar_url: string | null };
-  onOpen: () => void; onStar: () => void; onShare: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void;
+  onOpen: () => void; onStar: () => void; onShare: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void; onMenu: () => void;
 }) {
   const kind = item.kind === 'folder' ? 'folder' : fileKindFromMime(item.mimeType ?? '', item.name);
   const color = fileColorFromKind(kind);
@@ -514,6 +599,7 @@ function FileCard({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOp
       <div className="card-top">
         <div className={`file-symbol large ${color}`}><ItemIcon kind={kind} /></div>
         {!isTrash && <button onClick={(e) => { e.stopPropagation(); onStar(); }}><Star size={16} fill={starred ? 'currentColor' : 'none'} /></button>}
+        <button className="mobile-card-menu" onClick={(e) => { e.stopPropagation(); onMenu(); }} title={`Actions for ${item.name}`}><MoreHorizontal size={20} /></button>
       </div>
       <HoverPreview item={item} />
       <div className="card-owner" title={ownerProfile?.full_name || ownerProfile?.email || 'You'}><span className="avatar avatar-tiny">{ownerProfile?.avatar_url ? <img src={ownerProfile.avatar_url} alt="" /> : (ownerProfile?.full_name || ownerProfile?.email || 'You').slice(0, 2).toUpperCase()}</span><span>{ownerProfile?.full_name || 'You'}</span></div>

@@ -285,6 +285,17 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
     await refresh();
   }, [userId, refresh]);
 
+  const moveItem = useCallback(async (item: UnifiedItem, targetFolderId: string | null): Promise<void> => {
+    if (!userId) throw new Error('You need to be signed in.');
+    if (item.kind === 'folder' && targetFolderId === item.id) throw new Error('A folder cannot be moved into itself.');
+    const table = item.kind === 'folder' ? 'folders' : 'files';
+    const column = item.kind === 'folder' ? 'parent_id' : 'folder_id';
+    const { error } = await supabase.from(table).update({ [column]: targetFolderId, updated_at: new Date().toISOString() }).eq('id', item.id).eq('owner_id', userId);
+    if (error) fail(error, 'Could not move this item.');
+    await logActivity({ actor_id: userId, action: 'move', resource_type: item.kind, resource_id: item.id, context: { name: item.name, target_folder_id: targetFolderId } });
+    await refresh();
+  }, [userId, refresh]);
+
   const toggleStar = useCallback(async (item: UnifiedItem): Promise<void> => {
     if (!userId) throw new Error('You need to be signed in.');
     const existing = starredIds.has(item.id);
@@ -433,7 +444,7 @@ export function useDrive(userId: string | undefined, currentFolderId: string | n
 
   return {
     items, loading, error, breadcrumbs, starredIds, storageUsedBytes, activities, ownerProfiles,
-    refresh, createFolder, uploadFiles, renameItem, toggleStar, moveToTrash,
+    refresh, createFolder, uploadFiles, renameItem, moveItem, toggleStar, moveToTrash,
     restoreItem, deletePermanently, emptyTrash, downloadFile, createLinkShare,
     getLinkShares, revokeLinkShare, inviteUser, getShares, revokeShare,
   };

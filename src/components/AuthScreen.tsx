@@ -3,8 +3,8 @@ import type { FormEvent } from 'react';
 import { Cloud, Eye, EyeOff, Loader2, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 
 export function AuthScreen({ onSignIn, onSignUp, busy }: {
-  onSignIn: (email: string, password: string) => Promise<void>;
-  onSignUp: (email: string, password: string, name: string) => Promise<void>;
+  onSignIn: (email: string, password: string) => Promise<boolean>;
+  onSignUp: (email: string, password: string, name: string) => Promise<boolean>;
   busy: boolean;
 }) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signup');
@@ -13,13 +13,15 @@ export function AuthScreen({ onSignIn, onSignUp, busy }: {
   const [name, setName] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    setConfirmationSent(false);
     try {
       if (mode === 'signin') await onSignIn(email, password);
-      else await onSignUp(email, password, name);
+      else if (await onSignUp(email, password, name)) setConfirmationSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     }
@@ -44,6 +46,7 @@ export function AuthScreen({ onSignIn, onSignUp, busy }: {
         <form onSubmit={submit} className="auth-card">
           <h2>{mode === 'signin' ? 'Welcome back' : 'Create your account'}</h2>
           <p className="auth-sub">{mode === 'signin' ? 'Sign in to access your workspace.' : 'Start organizing your work in seconds.'}</p>
+          {confirmationSent && <div className="auth-confirmation" role="status"><strong>Check your email to verify your account.</strong><span>We sent a verification link to {email}. Verify it before signing in.</span></div>}
           {mode === 'signup' && (
             <label className="auth-field"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex Carter" required autoComplete="name" /></label>
           )}
