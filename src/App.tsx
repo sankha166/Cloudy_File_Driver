@@ -434,6 +434,7 @@ function DriveApp() {
                   onDownload={() => handleDownload(item)}
                   onDelete={() => handleDelete(item)}
                   onRestore={() => handleRestore(item)}
+                  onPermanentDelete={() => handlePermanentDelete(item)}
                   onMenu={() => setActionItem(item)}
                 />
               ))}
@@ -475,14 +476,19 @@ function DriveApp() {
             <div className="action-sheet-handle" />
             <div className="action-sheet-title"><div className={`file-symbol ${fileColorFromKind(actionItem.kind === 'folder' ? 'folder' : fileKindFromMime(actionItem.mimeType ?? '', actionItem.name))}`}><ItemIcon kind={actionItem.kind === 'folder' ? 'folder' : fileKindFromMime(actionItem.mimeType ?? '', actionItem.name)} /></div><strong>{actionItem.name}</strong><button onClick={() => setActionItem(null)}><X size={18} /></button></div>
             <div className="action-sheet-grid">
-              <button onClick={() => { setActionItem(null); openItem(actionItem); }}><FileText size={18} /> Open</button>
-              {!actionItem.shared && <button onClick={() => { setActionItem(null); setShareItem(actionItem); }}><Share2 size={18} /> Share</button>}
-              <button onClick={() => { setActionItem(null); drive.toggleStar(actionItem); }}><Star size={18} /> {drive.starredIds.has(actionItem.id) ? 'Remove star' : 'Add to starred'}</button>
-              {actionItem.kind === 'file' && <button onClick={() => { setActionItem(null); handleDownload(actionItem); }}><Download size={18} /> Download</button>}
-              {actionItem.kind === 'file' && <button onClick={() => { localStorage.setItem(`offline:${actionItem.id}`, 'true'); setActionItem(null); showNotice('Marked available offline.'); }}><CloudOff size={18} /> Available offline</button>}
-              <button onClick={() => openMovePicker(actionItem)}><Folder size={18} /> Move</button>
-              {(!actionItem.shared || actionItem.sharedRole === 'editor') && <button onClick={() => { setActionItem(null); setRenameItem(actionItem); setRenameValue(actionItem.name); }}><Pencil size={18} /> Rename</button>}
-              {(!actionItem.shared || actionItem.sharedRole === 'editor') && <button className="action-danger" onClick={() => { setActionItem(null); handleDelete(actionItem); }}><Trash2 size={18} /> Move to trash</button>}
+              {view === 'Trash' ? <>
+                <button onClick={() => { setActionItem(null); handleRestore(actionItem); }}><RotateCcw size={18} /> Restore</button>
+                <button className="action-danger" onClick={() => { setActionItem(null); handlePermanentDelete(actionItem); }}><Trash2 size={18} /> Delete forever</button>
+              </> : <>
+                <button onClick={() => { setActionItem(null); openItem(actionItem); }}><FileText size={18} /> Open</button>
+                {!actionItem.shared && <button onClick={() => { setActionItem(null); setShareItem(actionItem); }}><Share2 size={18} /> Share</button>}
+                <button onClick={() => { setActionItem(null); drive.toggleStar(actionItem); }}><Star size={18} /> {drive.starredIds.has(actionItem.id) ? 'Remove star' : 'Add to starred'}</button>
+                {actionItem.kind === 'file' && <button onClick={() => { setActionItem(null); handleDownload(actionItem); }}><Download size={18} /> Download</button>}
+                {actionItem.kind === 'file' && <button onClick={() => { localStorage.setItem(`offline:${actionItem.id}`, 'true'); setActionItem(null); showNotice('Marked available offline.'); }}><CloudOff size={18} /> Available offline</button>}
+                <button onClick={() => openMovePicker(actionItem)}><Folder size={18} /> Move</button>
+                {(!actionItem.shared || actionItem.sharedRole === 'editor') && <button onClick={() => { setActionItem(null); setRenameItem(actionItem); setRenameValue(actionItem.name); }}><Pencil size={18} /> Rename</button>}
+                {(!actionItem.shared || actionItem.sharedRole === 'editor') && <button className="action-danger" onClick={() => { setActionItem(null); handleDelete(actionItem); }}><Trash2 size={18} /> Move to trash</button>}
+              </>}
             </div>
           </div>
         </div>
@@ -588,7 +594,7 @@ function FileRow({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpe
     <div className="file-row">
       <div className="name-cell" onClick={onOpen}>
         <div className={`file-symbol ${color}`}><ItemIcon kind={kind} /></div>
-        <HoverPreview item={item} />
+        <strong className="file-name-trigger">{item.name}</strong>
         {starred && <Star size={13} className="star-filled" fill="currentColor" />}
         {item.shared && <Share2 size={12} className="shared-icon" />}
       </div>
@@ -616,9 +622,9 @@ function FileRow({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpe
   );
 }
 
-function FileCard({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpen, onStar, onDownload, onShare, onDelete, onRestore, onMenu }: {
+function FileCard({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOpen, onStar, onDownload, onShare, onDelete, onRestore, onPermanentDelete, onMenu }: {
   item: UnifiedItem; starred: boolean; isTrash: boolean; canEdit: boolean; isOwner: boolean; ownerProfile?: { full_name: string; email: string; avatar_url: string | null };
-  onOpen: () => void; onStar: () => void; onShare: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void; onMenu: () => void;
+  onOpen: () => void; onStar: () => void; onShare: () => void; onDownload: () => void; onDelete: () => void; onRestore: () => void; onPermanentDelete: () => void; onMenu: () => void;
 }) {
   const kind = item.kind === 'folder' ? 'folder' : fileKindFromMime(item.mimeType ?? '', item.name);
   const color = fileColorFromKind(kind);
@@ -629,7 +635,8 @@ function FileCard({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOp
         {!isTrash && <button onClick={(e) => { e.stopPropagation(); onStar(); }}><Star size={16} fill={starred ? 'currentColor' : 'none'} /></button>}
         <button className="mobile-card-menu" onClick={(e) => { e.stopPropagation(); onMenu(); }} title={`Actions for ${item.name}`}><MoreHorizontal size={20} /></button>
       </div>
-      <HoverPreview item={item} />
+      <GridPreview item={item} />
+      <strong className="file-name-trigger">{item.name}</strong>
       <div className="card-owner" title={ownerProfile?.full_name || ownerProfile?.email || 'You'}><span className="avatar avatar-tiny">{ownerProfile?.avatar_url ? <img src={ownerProfile.avatar_url} alt="" /> : (ownerProfile?.full_name || ownerProfile?.email || 'You').slice(0, 2).toUpperCase()}</span><span>{ownerProfile?.full_name || 'You'}</span></div>
       <span>{formatRelativeTime(item.updatedAt)} · {item.kind === 'folder' ? 'Folder' : formatBytes(item.sizeBytes ?? 0)}</span>
       {!isTrash ? (
@@ -641,10 +648,31 @@ function FileCard({ item, starred, isTrash, canEdit, isOwner, ownerProfile, onOp
       ) : (
         <div className="card-actions">
           <button className="card-action" onClick={(e) => { e.stopPropagation(); onRestore(); }}><RotateCcw size={14} /></button>
+          <button className="card-action danger" onClick={(e) => { e.stopPropagation(); onPermanentDelete(); }} title="Delete forever"><Trash2 size={14} /></button>
         </div>
       )}
     </div>
   );
+}
+
+function GridPreview({ item }: { item: UnifiedItem }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const kind = fileKindFromMime(item.mimeType ?? '', item.name);
+  useEffect(() => {
+    let active = true;
+    if (item.kind !== 'file' || !item.storageKey) return;
+    supabase.storage.from('drive-files').createSignedUrl(item.storageKey, 300)
+      .then(({ data }) => { if (active) setUrl(data?.signedUrl ?? null); });
+    return () => { active = false; };
+  }, [item.kind, item.storageKey]);
+
+  if (item.kind === 'folder') return <div className="grid-preview grid-preview-folder"><Folder size={46} fill="currentColor" /></div>;
+  return <div className="grid-preview" aria-label={`${item.name} preview`}>
+    {url && kind === 'image' && <img src={url} alt="" />}
+    {url && kind === 'pdf' && <iframe src={`${url}#page=1&toolbar=0&navpanes=0&scrollbar=0`} title={`${item.name} first page`} />}
+    {url && kind === 'video' && <video src={url} muted preload="metadata" />}
+    {!url && <ItemIcon kind={kind} />}
+  </div>;
 }
 
 function ItemIcon({ kind }: { kind: string }) {
@@ -657,36 +685,6 @@ function ItemIcon({ kind }: { kind: string }) {
   if (kind === 'archive') return <Archive size={19} strokeWidth={2.1} />;
   if (kind === 'code') return <FileCode2 size={19} strokeWidth={2.1} />;
   return <File size={19} strokeWidth={2.1} />;
-}
-
-function HoverPreview({ item }: { item: UnifiedItem }) {
-  const [open, setOpen] = useState(false);
-  const [url, setUrl] = useState<string | null>(null);
-  const kind = fileKindFromMime(item.mimeType ?? '', item.name);
-  const isOffice = /\.(docx?|xlsx?|pptx?)$/i.test(item.name);
-
-  useEffect(() => {
-    if (!open || item.kind !== 'file' || !item.storageKey) return;
-    supabase.storage.from('drive-files').createSignedUrl(item.storageKey, 300).then(({ data }) => setUrl(data?.signedUrl ?? null));
-  }, [open, item.kind, item.storageKey]);
-
-  if (item.kind !== 'file') return <strong className="file-name-trigger">{item.name}</strong>;
-  return (
-    <span className="hover-preview-trigger" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-      <strong className="file-name-trigger">{item.name}</strong>
-      {open && <span className="hover-preview-card">
-        <strong>{item.name}</strong>
-        <span className="hover-preview-media">
-          {url && kind === 'image' && <img src={url} alt="" />}
-          {url && kind === 'pdf' && <iframe src={`${url}#toolbar=0`} title="PDF preview" />}
-          {url && kind === 'video' && <video src={url} muted autoPlay playsInline />}
-          {url && kind === 'audio' && <audio src={url} controls />}
-          {url && kind === 'document' && (isOffice || item.mimeType?.startsWith('text/')) && <iframe src={isOffice ? `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(url)}` : url} title="Document preview" />}
-          {!url && <span>Loading preview...</span>}
-        </span>
-      </span>}
-    </span>
-  );
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
